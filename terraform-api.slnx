@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/TerraformApi.Api/TerraformApi.Api.csproj" />
+    <Project Path="src/TerraformApi.Application/TerraformApi.Application.csproj" />
+    <Project Path="src/TerraformApi.Domain/TerraformApi.Domain.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/TerraformApi.Api.Tests/TerraformApi.Api.Tests.csproj" />
+    <Project Path="tests/TerraformApi.Application.Tests/TerraformApi.Application.Tests.csproj" />
+  </Folder>
+</Solution>
