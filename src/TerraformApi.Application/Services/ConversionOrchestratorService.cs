@@ -3,6 +3,12 @@ using TerraformApi.Domain.Models;
 
 namespace TerraformApi.Application.Services;
 
+/// <summary>
+/// Orchestrates the full conversion pipeline: settings validation → OpenAPI parsing →
+/// Terraform generation (or merging with an existing config) → APIM naming validation.
+/// All pipeline steps are coordinated here so that individual services remain focused
+/// on their single responsibility.
+/// </summary>
 public sealed class ConversionOrchestratorService : IConversionOrchestrator
 {
     private readonly IOpenApiParser _parser;
@@ -22,8 +28,16 @@ public sealed class ConversionOrchestratorService : IConversionOrchestrator
         _namingValidator = namingValidator;
     }
 
+    /// <summary>
+    /// Validates settings, parses the OpenAPI JSON, generates Terraform HCL, and
+    /// returns a <see cref="ConversionResult"/> containing the output or any errors.
+    /// Non-fatal naming issues are surfaced as warnings rather than errors.
+    /// </summary>
     public ConversionResult Convert(string openApiJson, ConversionSettings settings)
     {
+        ArgumentNullException.ThrowIfNull(openApiJson);
+        ArgumentNullException.ThrowIfNull(settings);
+
         var warnings = new List<string>();
         var errors = new List<string>();
 
@@ -53,9 +67,9 @@ public sealed class ConversionOrchestratorService : IConversionOrchestrator
                 Warnings = warnings
             };
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
         {
-            errors.Add(ex.Message);
+            errors.Add(ex is InvalidOperationException ? ex.Message : $"Conversion failed: {ex.Message}");
             return new ConversionResult
             {
                 Success = false,
@@ -65,8 +79,17 @@ public sealed class ConversionOrchestratorService : IConversionOrchestrator
         }
     }
 
+    /// <summary>
+    /// Like <see cref="Convert"/> but merges the newly-generated Terraform with
+    /// <paramref name="existingTerraform"/>, preserving any custom operation blocks
+    /// not present in the updated OpenAPI spec.
+    /// </summary>
     public ConversionResult Update(string openApiJson, string existingTerraform, ConversionSettings settings)
     {
+        ArgumentNullException.ThrowIfNull(openApiJson);
+        ArgumentNullException.ThrowIfNull(existingTerraform);
+        ArgumentNullException.ThrowIfNull(settings);
+
         var warnings = new List<string>();
         var errors = new List<string>();
 
@@ -96,9 +119,9 @@ public sealed class ConversionOrchestratorService : IConversionOrchestrator
                 Warnings = warnings
             };
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
         {
-            errors.Add(ex.Message);
+            errors.Add(ex is InvalidOperationException ? ex.Message : $"Update failed: {ex.Message}");
             return new ConversionResult
             {
                 Success = false,
@@ -108,6 +131,11 @@ public sealed class ConversionOrchestratorService : IConversionOrchestrator
         }
     }
 
+    /// <summary>
+    /// Validates the conversion settings before parsing begins. Currently checks the
+    /// resource group name and the optional explicit API name.
+    /// Returns an empty list when all settings are valid.
+    /// </summary>
     private List<string> ValidateSettings(ConversionSettings settings)
     {
         var errors = new List<string>();
@@ -126,6 +154,12 @@ public sealed class ConversionOrchestratorService : IConversionOrchestrator
         return errors;
     }
 
+    /// <summary>
+    /// Validates the names that were auto-generated during parsing (API name, path,
+    /// and all operation IDs + display names) against Microsoft's APIM naming rules.
+    /// Violations become warnings rather than fatal errors because the generator
+    /// sanitises names before output.
+    /// </summary>
     private List<string> ValidateGeneratedNames(ApimConfiguration configuration)
     {
         var warnings = new List<string>();

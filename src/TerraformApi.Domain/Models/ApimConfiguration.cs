@@ -3,9 +3,25 @@ namespace TerraformApi.Domain.Models;
 public sealed record ApimConfiguration
 {
     public required string ApiGroupName { get; init; }
-    public List<string> Products { get; init; } = [];
+    public List<ApimProduct> Products { get; init; } = [];
     public required ApimApi Api { get; init; }
     public List<ApimApiOperation> ApiOperations { get; init; } = [];
+}
+
+/// <summary>
+/// Represents an Azure APIM product resource that groups APIs and controls access.
+/// </summary>
+public sealed record ApimProduct
+{
+    public required string ApimResourceGroupName { get; init; }
+    public required string ApimName { get; init; }
+    public required string ProductId { get; init; }
+    public required string DisplayName { get; init; }
+    public bool SubscriptionRequired { get; init; }
+    public bool ApprovalRequired { get; init; }
+    public bool Published { get; init; } = true;
+    public int? SubscriptionsLimit { get; init; }
+    public string Description { get; init; } = "";
 }
 
 public sealed record ApimApi

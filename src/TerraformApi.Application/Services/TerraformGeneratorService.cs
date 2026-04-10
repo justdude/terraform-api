@@ -4,15 +4,41 @@ using TerraformApi.Domain.Models;
 
 namespace TerraformApi.Application.Services;
 
+/// <summary>
+/// Generates Terraform HCL from an <see cref="ApimConfiguration"/> using a
+/// <see cref="StringBuilder"/>-based approach that produces output matching the
+/// APIM module block structure expected by the Terraform consumer.
+/// </summary>
 public sealed class TerraformGeneratorService : ITerraformGenerator
 {
+    /// <summary>
+    /// Renders the complete HCL block for the given APIM configuration, including
+    /// the outer API group, the <c>api</c> block (with optional CORS policy heredoc),
+    /// and all <c>api_operations</c> entries.
+    /// </summary>
     public string Generate(ApimConfiguration configuration)
     {
         var sb = new StringBuilder();
         var indent = "        ";
 
         sb.AppendLine($"{configuration.ApiGroupName} = {{");
-        sb.AppendLine($"  product = [{FormatStringList(configuration.Products)}]");
+
+        // Product block — empty one-liner when no products configured, full blocks otherwise
+        if (configuration.Products.Count == 0)
+        {
+            sb.AppendLine("  product = []");
+        }
+        else
+        {
+            sb.AppendLine("  product = [");
+            foreach (var product in configuration.Products)
+            {
+                sb.AppendLine("    {");
+                WriteProductBlock(sb, product, indent);
+                sb.AppendLine("    },");
+            }
+            sb.AppendLine("  ]");
+        }
 
         // API block
         sb.AppendLine("  api = [");
@@ -37,6 +63,10 @@ public sealed class TerraformGeneratorService : ITerraformGenerator
         return sb.ToString();
     }
 
+    /// <summary>
+    /// Writes all fields of the <c>api</c> block. When a CORS policy is present,
+    /// appends it as a <c>policy = &lt;&lt;XML</c> heredoc after the scalar fields.
+    /// </summary>
     private static void WriteApiBlock(StringBuilder sb, ApimApi api, string indent)
     {
         sb.AppendLine($"{indent}apim_resource_group_name         = \"{api.ApimResourceGroupName}\"");
@@ -63,6 +93,10 @@ public sealed class TerraformGeneratorService : ITerraformGenerator
         }
     }
 
+    /// <summary>
+    /// Writes all fields of a single <c>api_operations</c> entry, including optional
+    /// <c>request</c> and <c>response</c> sub-blocks when the operation defines them.
+    /// </summary>
     private static void WriteOperationBlock(StringBuilder sb, ApimApiOperation op, string indent)
     {
         sb.AppendLine($"{indent}operation_id             = \"{op.OperationId}\"");
@@ -157,6 +191,22 @@ public sealed class TerraformGeneratorService : ITerraformGenerator
             }
             sb.AppendLine($"{indent}]");
         }
+    }
+
+    /// <summary>
+    /// Writes all scalar and boolean fields of a product block.
+    /// </summary>
+    private static void WriteProductBlock(StringBuilder sb, ApimProduct product, string indent)
+    {
+        sb.AppendLine($"{indent}apim_resource_group_name = \"{product.ApimResourceGroupName}\"");
+        sb.AppendLine($"{indent}apim_name                = \"{product.ApimName}\"");
+        sb.AppendLine($"{indent}product_id               = \"{product.ProductId}\"");
+        sb.AppendLine($"{indent}display_name             = \"{product.DisplayName}\"");
+        sb.AppendLine($"{indent}subscription_required    = {FormatBool(product.SubscriptionRequired)}");
+        sb.AppendLine($"{indent}approval_required        = {FormatBool(product.ApprovalRequired)}");
+        sb.AppendLine($"{indent}published                = {FormatBool(product.Published)}");
+        sb.AppendLine($"{indent}subscriptions_limit      = {(product.SubscriptionsLimit.HasValue ? product.SubscriptionsLimit.Value.ToString() : "null")}");
+        sb.AppendLine($"{indent}description              = \"{EscapeString(product.Description)}\"");
     }
 
     private static string FormatBool(bool value) => value ? "true" : "false";

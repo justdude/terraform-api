@@ -399,3 +399,11 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Deploy artifacts
+/deploy/*.tar.gz

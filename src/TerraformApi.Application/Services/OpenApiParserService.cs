@@ -5,6 +5,10 @@ using TerraformApi.Domain.Models;
 
 namespace TerraformApi.Application.Services;
 
+/// <summary>
+/// Parses an OpenAPI 3.x JSON string into an <see cref="ApimConfiguration"/> that
+/// represents the Azure APIM resource structure required for Terraform generation.
+/// </summary>
 public sealed class OpenApiParserService : IOpenApiParser
 {
     private readonly IApimNamingValidator _namingValidator;
@@ -14,6 +18,17 @@ public sealed class OpenApiParserService : IOpenApiParser
         _namingValidator = namingValidator;
     }
 
+    /// <summary>
+    /// Parses the supplied OpenAPI JSON and returns a fully-populated
+    /// <see cref="ApimConfiguration"/> with the API resource and one
+    /// <see cref="ApimApiOperation"/> per path+method combination found in the spec.
+    /// </summary>
+    /// <param name="openApiJson">Raw OpenAPI 3.x JSON string.</param>
+    /// <param name="settings">Conversion settings that control naming, environment, and CORS.</param>
+    /// <returns>The parsed APIM configuration.</returns>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when the JSON cannot be parsed or contains fatal OpenAPI errors.
+    /// </exception>
     public ApimConfiguration Parse(string openApiJson, ConversionSettings settings)
     {
         OpenApiDocument openApiDoc;
@@ -106,15 +121,38 @@ public sealed class OpenApiParserService : IOpenApiParser
             }
         }
 
+        var products = new List<ApimProduct>();
+        if (settings.GenerateProduct)
+        {
+            var productId = settings.ProductId ?? $"{apiName}-{env}";
+            products.Add(new ApimProduct
+            {
+                ApimResourceGroupName = settings.StageGroupName,
+                ApimName = settings.ApimName,
+                ProductId = productId,
+                DisplayName = settings.ProductDisplayName ?? $"{apiDisplayName} - {env}",
+                SubscriptionRequired = settings.ProductSubscriptionRequired,
+                ApprovalRequired = settings.ProductApprovalRequired,
+                Published = true,
+                SubscriptionsLimit = null,
+                Description = settings.ProductDescription ?? ""
+            });
+        }
+
         return new ApimConfiguration
         {
             ApiGroupName = settings.ApiGroupName,
-            Products = [],
+            Products = products,
             Api = api,
             ApiOperations = operations
         };
     }
 
+    /// <summary>
+    /// Strips the leading slash from an OpenAPI path so it can be used directly
+    /// as an APIM <c>url_template</c>. Both OpenAPI and APIM use the same <c>{param}</c>
+    /// placeholder syntax, so no further transformation is needed.
+    /// </summary>
     private static string ConvertPathToTemplate(string openApiPath)
     {
         // OpenAPI uses {param}, Terraform APIM uses the same format
@@ -122,6 +160,11 @@ public sealed class OpenApiParserService : IOpenApiParser
         return string.IsNullOrEmpty(template) ? "/" : template;
     }
 
+    /// <summary>
+    /// Builds the APIM request model from an OpenAPI operation, collecting headers,
+    /// query parameters, and request body representations. Path-level parameters are
+    /// merged with operation-level parameters; operation-level takes precedence.
+    /// </summary>
     private static List<ApimOperationRequest> BuildRequests(OpenApiOperation operation, OpenApiPathItem pathItem)
     {
         var headers = new List<ApimParameter>();
@@ -199,6 +242,10 @@ public sealed class OpenApiParserService : IOpenApiParser
         ];
     }
 
+    /// <summary>
+    /// Builds APIM response models from all numeric response codes defined in the
+    /// OpenAPI operation, including their content-type representations.
+    /// </summary>
     private static List<ApimOperationResponse> BuildResponses(OpenApiOperation operation)
     {
         var responses = new List<ApimOperationResponse>();
@@ -236,6 +283,11 @@ public sealed class OpenApiParserService : IOpenApiParser
         return responses;
     }
 
+    /// <summary>
+    /// Returns the first 2xx status code declared on the operation, falling back to
+    /// 200 when no success response is defined. This is used as the operation's
+    /// primary <c>status_code</c> in the Terraform output.
+    /// </summary>
     private static int GetPrimarySuccessStatusCode(OpenApiOperation operation)
     {
         if (operation.Responses == null) return 200;
@@ -264,6 +316,11 @@ public sealed class OpenApiParserService : IOpenApiParser
         };
     }
 
+    /// <summary>
+    /// Builds the CORS policy XML string that will be embedded in the Terraform
+    /// <c>policy = &lt;&lt;XML</c> heredoc block. Returns an empty string when no
+    /// allowed origins can be derived from the settings (no frontend host or local dev host).
+    /// </summary>
     private static string BuildCorsPolicy(ConversionSettings settings)
     {
         var origins = new List<string>();

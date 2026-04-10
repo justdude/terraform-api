@@ -3,6 +3,7 @@
 **/out/
 **/.vs/
 **/.vscode/
+**/.idea/
 **/node_modules/
 **/.git
 **/.gitignore
@@ -10,6 +11,25 @@
 **/*.user
 **/*.suo
 **/TestResults/
+
+# Exclude test projects from build context
+tests/
+
+# Docker and CI files
 .dockerignore
 docker-compose*.yml
+Dockerfile
+
+# Documentation
 README.md
+LICENSE
+*.md
+
+# Deployment scripts
+deploy/
+deploy.sh
+.env
+.env.*
+
+# IDE / editor
+.claude/

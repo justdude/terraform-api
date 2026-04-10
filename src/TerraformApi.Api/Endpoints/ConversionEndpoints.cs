@@ -1,9 +1,14 @@
+using Microsoft.Extensions.Options;
 using Microsoft.OpenApi.Readers;
 using TerraformApi.Api.Dtos;
 using TerraformApi.Domain.Interfaces;
 
 namespace TerraformApi.Api.Endpoints;
 
+/// <summary>
+/// Maps all API endpoints for the OpenAPI-to-Terraform conversion service.
+/// Endpoints cover conversion, update (merge), validation, environment presets, and health.
+/// </summary>
 public static class ConversionEndpoints
 {
     public static void MapConversionEndpoints(this WebApplication app)
@@ -18,21 +23,37 @@ public static class ConversionEndpoints
 
         api.MapPost("/convert/update", Update)
             .WithName("UpdateTerraformFromOpenApi")
-            .WithDescription("Updates an existing Terraform configuration with changes from an OpenAPI specification")
+            .WithDescription("Updates an existing Terraform configuration with changes from an OpenAPI specification, preserving custom operations")
             .Produces<ConvertResponse>()
             .ProducesProblem(400);
 
         api.MapPost("/validate", Validate)
             .WithName("ValidateOpenApi")
-            .WithDescription("Validates an OpenAPI JSON specification for APIM compatibility")
+            .WithDescription("Validates an OpenAPI JSON specification against Azure APIM naming rules")
             .Produces<ValidateResponse>()
             .ProducesProblem(400);
+
+        api.MapGet("/environments", GetEnvironments)
+            .WithName("GetEnvironments")
+            .WithDescription("Returns pre-configured APIM environment presets from appsettings.json");
 
         api.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow }))
             .WithName("HealthCheck")
             .WithDescription("Health check endpoint");
     }
 
+    /// <summary>
+    /// Returns the dictionary of environment presets so the frontend
+    /// can auto-fill settings when the user picks an environment.
+    /// </summary>
+    private static IResult GetEnvironments(IOptions<Dictionary<string, ApimEnvironmentConfig>> options)
+    {
+        return Results.Ok(options.Value);
+    }
+
+    /// <summary>
+    /// Parses an OpenAPI JSON spec and generates a fresh APIM Terraform config block.
+    /// </summary>
     private static IResult Convert(ConvertRequest request, IConversionOrchestrator orchestrator)
     {
         if (string.IsNullOrWhiteSpace(request.OpenApiJson))
@@ -46,6 +67,11 @@ public static class ConversionEndpoints
             : Results.BadRequest(DtoMapper.ToResponse(result));
     }
 
+    /// <summary>
+    /// Merges a new OpenAPI spec into an existing Terraform config.
+    /// Operations present in both are replaced; operations only in
+    /// the existing config are preserved.
+    /// </summary>
     private static IResult Update(UpdateRequest request, IConversionOrchestrator orchestrator)
     {
         if (string.IsNullOrWhiteSpace(request.OpenApiJson))
@@ -62,6 +88,10 @@ public static class ConversionEndpoints
             : Results.BadRequest(DtoMapper.ToResponse(result));
     }
 
+    /// <summary>
+    /// Validates an OpenAPI JSON document and reports APIM naming violations
+    /// without generating any Terraform output.
+    /// </summary>
     private static IResult Validate(ConvertRequest request, IOpenApiParser parser, IApimNamingValidator validator)
     {
         var errors = new List<string>();
@@ -74,6 +104,16 @@ public static class ConversionEndpoints
             if (diagnostic.Errors.Count > 0)
             {
                 errors.AddRange(diagnostic.Errors.Select(e => e.Message));
+                // Fatal parse errors (e.g. completely invalid JSON) result in no
+                // usable document, so return 400 immediately rather than 200+IsValid=false.
+                if (doc?.Paths == null)
+                {
+                    return Results.BadRequest(new ValidateResponse
+                    {
+                        IsValid = false,
+                        Errors = errors
+                    });
+                }
             }
 
             if (doc?.Paths != null)
@@ -119,9 +159,9 @@ public static class ConversionEndpoints
                 Errors = errors
             });
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            errors.Add($"Validation failed: {ex.Message}");
+            errors.Add("Validation failed: could not parse the provided OpenAPI document.");
             return Results.BadRequest(new ValidateResponse
             {
                 IsValid = false,

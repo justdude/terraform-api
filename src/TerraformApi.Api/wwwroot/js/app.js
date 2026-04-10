@@ -1,47 +1,273 @@
 (function () {
     'use strict';
 
+    // ----------------------------------------------------------------
     // Tab switching
-    document.querySelectorAll('.tab').forEach(function (tab) {
+    // ----------------------------------------------------------------
+    document.querySelectorAll('.toolbar-tab').forEach(function (tab) {
         tab.addEventListener('click', function () {
-            document.querySelectorAll('.tab').forEach(function (t) { t.classList.remove('active'); });
-            document.querySelectorAll('.tab-content').forEach(function (c) { c.classList.remove('active'); });
+            document.querySelectorAll('.toolbar-tab').forEach(function (t) { t.classList.remove('active'); });
+            document.querySelectorAll('.tab-pane').forEach(function (p) { p.classList.remove('active'); });
             tab.classList.add('active');
-            document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+            document.getElementById('pane-' + tab.dataset.tab).classList.add('active');
         });
     });
 
-    // File upload handlers
-    setupFileUpload('upload-area-convert', 'file-input-convert', 'openapi-input');
-    setupFileUpload('upload-area-update', 'file-input-update', 'openapi-input-update');
-    setupFileUpload('upload-area-terraform', 'file-input-terraform', 'terraform-input');
-    setupFileUpload('upload-area-validate', 'file-input-validate', 'openapi-input-validate');
+    // ----------------------------------------------------------------
+    // Advanced settings toggle
+    // ----------------------------------------------------------------
+    var advToggle = document.getElementById('advanced-toggle');
+    var advBody = document.getElementById('advanced-body');
+    advToggle.addEventListener('click', function () {
+        advToggle.classList.toggle('open');
+        advBody.classList.toggle('open');
+    });
 
-    function setupFileUpload(areaId, inputId, textareaId) {
-        var area = document.getElementById(areaId);
+    // ----------------------------------------------------------------
+    // Product fields toggle
+    // ----------------------------------------------------------------
+    document.getElementById('generateProduct').addEventListener('change', function () {
+        document.getElementById('product-fields').style.display = this.checked ? 'block' : 'none';
+    });
+
+    // ----------------------------------------------------------------
+    // Environment presets — loaded from API, custom ones in localStorage
+    // ----------------------------------------------------------------
+    var LS_KEY = 'apim-custom-envs';
+    var apiEnvConfigs = {};   // from server
+    var envConfigs = {};      // merged (api + custom)
+
+    function loadCustomEnvs() {
+        try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}'); }
+        catch (e) { return {}; }
+    }
+
+    function saveCustomEnvs(obj) {
+        localStorage.setItem(LS_KEY, JSON.stringify(obj));
+    }
+
+    function mergeEnvs() {
+        var custom = loadCustomEnvs();
+        envConfigs = Object.assign({}, apiEnvConfigs, custom);
+    }
+
+    function rebuildEnvSelect() {
+        var select = document.getElementById('env-select');
+        // Remove all options except the first placeholder
+        while (select.options.length > 1) select.remove(1);
+        Object.keys(envConfigs).forEach(function (key) {
+            var opt = document.createElement('option');
+            opt.value = key;
+            opt.textContent = key.toUpperCase();
+            select.appendChild(opt);
+        });
+    }
+
+    fetch('/api/environments')
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            apiEnvConfigs = data;
+            mergeEnvs();
+            rebuildEnvSelect();
+            renderEnvGrid();
+        })
+        .catch(function () { /* environments endpoint optional */ });
+
+    document.getElementById('env-select').addEventListener('change', function () {
+        var key = this.value;
+        if (!key || !envConfigs[key]) return;
+        applyEnvToSidebar(key, envConfigs[key]);
+        setStatus('Loaded preset: ' + key.toUpperCase());
+    });
+
+    function applyEnvToSidebar(key, cfg) {
+        setVal('environment', key);
+        if (cfg.stageGroupName) setVal('stageGroupName', cfg.stageGroupName);
+        if (cfg.apimName) setVal('apimName', cfg.apimName);
+        if (cfg.apiGatewayHost) setVal('apiGatewayHost', cfg.apiGatewayHost);
+        if (cfg.frontendHost) setVal('frontendHost', cfg.frontendHost);
+        if (cfg.companyDomain) setVal('companyDomain', cfg.companyDomain);
+        setVal('localDevHost', cfg.localDevHost || '');
+        setVal('localDevPort', cfg.localDevPort || '');
+        setChecked('subscriptionRequired', cfg.subscriptionRequired);
+        setChecked('includeCorsPolicy', cfg.includeCorsPolicy);
+    }
+
+    // ---- Environments tab grid ----
+
+    function renderEnvGrid() {
+        var grid = document.getElementById('env-grid');
+        if (!grid) return;
+        grid.innerHTML = '';
+        var custom = loadCustomEnvs();
+        Object.keys(envConfigs).forEach(function (key) {
+            grid.appendChild(buildEnvCard(key, envConfigs[key], !!custom[key]));
+        });
+    }
+
+    function buildEnvCard(key, cfg, isCustom) {
+        var card = document.createElement('div');
+        card.className = 'env-card';
+        card.dataset.envKey = key;
+
+        var header = document.createElement('div');
+        header.className = 'env-card-header';
+        header.innerHTML =
+            '<span class="env-card-name">' + esc(key) + '</span>' +
+            '<span class="env-card-badge' + (isCustom ? ' custom' : '') + '">' +
+            (isCustom ? 'custom' : 'config') + '</span>';
+        card.appendChild(header);
+
+        var body = document.createElement('div');
+        body.className = 'env-card-body';
+
+        var fields = [
+            { id: 'stageGroupName', label: 'Resource Group', full: false },
+            { id: 'apimName',       label: 'APIM Instance',  full: false },
+            { id: 'apiGatewayHost', label: 'Gateway Host',   full: true },
+            { id: 'frontendHost',   label: 'Frontend Host',  full: false },
+            { id: 'companyDomain',  label: 'Company Domain', full: false },
+            { id: 'localDevHost',   label: 'Dev Host',       full: false },
+            { id: 'localDevPort',   label: 'Dev Port',       full: false }
+        ];
+
+        fields.forEach(function (f) {
+            var wrap = document.createElement('div');
+            wrap.className = 'env-card-field' + (f.full ? ' full' : '');
+            var lbl = document.createElement('label');
+            lbl.textContent = f.label;
+            var inp = document.createElement('input');
+            inp.type = 'text';
+            inp.value = cfg[f.id] || '';
+            inp.dataset.field = f.id;
+            wrap.appendChild(lbl);
+            wrap.appendChild(inp);
+            body.appendChild(wrap);
+        });
+
+        card.appendChild(body);
+
+        var checks = document.createElement('div');
+        checks.className = 'env-card-checks';
+        ['subscriptionRequired', 'includeCorsPolicy'].forEach(function (fid) {
+            var lbl = document.createElement('label');
+            var chk = document.createElement('input');
+            chk.type = 'checkbox';
+            chk.checked = !!cfg[fid];
+            chk.dataset.field = fid;
+            lbl.appendChild(chk);
+            lbl.appendChild(document.createTextNode(' ' + (fid === 'subscriptionRequired' ? 'Subscription Required' : 'Include CORS')));
+            checks.appendChild(lbl);
+        });
+        card.appendChild(checks);
+
+        var footer = document.createElement('div');
+        footer.className = 'env-card-footer';
+
+        var applyBtn = document.createElement('button');
+        applyBtn.className = 'btn-apply';
+        applyBtn.textContent = 'Apply to Sidebar';
+        applyBtn.addEventListener('click', function () {
+            var saved = collectCardValues(card);
+            applyEnvToSidebar(key, saved);
+            setVal('environment', key);
+            setStatus('Applied: ' + key.toUpperCase());
+        });
+        footer.appendChild(applyBtn);
+
+        var saveBtn = document.createElement('button');
+        saveBtn.className = 'btn btn-ghost';
+        saveBtn.style.padding = '6px 10px';
+        saveBtn.textContent = 'Save';
+        saveBtn.addEventListener('click', function () {
+            var custom = loadCustomEnvs();
+            custom[key] = collectCardValues(card);
+            saveCustomEnvs(custom);
+            mergeEnvs();
+            rebuildEnvSelect();
+            renderEnvGrid();
+            setStatus('Saved: ' + key.toUpperCase());
+        });
+        footer.appendChild(saveBtn);
+
+        if (isCustom) {
+            var delBtn = document.createElement('button');
+            delBtn.className = 'btn-del';
+            delBtn.textContent = 'Delete';
+            delBtn.addEventListener('click', function () {
+                var custom = loadCustomEnvs();
+                delete custom[key];
+                saveCustomEnvs(custom);
+                mergeEnvs();
+                rebuildEnvSelect();
+                renderEnvGrid();
+                setStatus('Deleted: ' + key.toUpperCase());
+            });
+            footer.appendChild(delBtn);
+        }
+
+        card.appendChild(footer);
+        return card;
+    }
+
+    function collectCardValues(card) {
+        var result = {};
+        card.querySelectorAll('[data-field]').forEach(function (el) {
+            result[el.dataset.field] = el.type === 'checkbox' ? el.checked : el.value;
+        });
+        return result;
+    }
+
+    // Add new environment
+    document.getElementById('btn-env-add').addEventListener('click', function () {
+        var name = prompt('Environment name (e.g. "uat"):');
+        if (!name || !name.trim()) return;
+        name = name.trim().toLowerCase();
+        var custom = loadCustomEnvs();
+        if (!custom[name]) custom[name] = {};
+        saveCustomEnvs(custom);
+        mergeEnvs();
+        rebuildEnvSelect();
+        renderEnvGrid();
+        setStatus('Added: ' + name.toUpperCase());
+    });
+
+    // Reset custom environments to API defaults
+    document.getElementById('btn-env-reset').addEventListener('click', function () {
+        if (!confirm('Remove all custom environments and revert to config defaults?')) return;
+        localStorage.removeItem(LS_KEY);
+        mergeEnvs();
+        rebuildEnvSelect();
+        renderEnvGrid();
+        setStatus('Environments reset to defaults');
+    });
+
+    // ----------------------------------------------------------------
+    // File upload helpers
+    // ----------------------------------------------------------------
+    setupUpload('upload-convert', 'file-convert', 'input-convert');
+    setupUpload('upload-update-api', 'file-update-api', 'input-update-api');
+    setupUpload('upload-update-tf', 'file-update-tf', 'input-update-tf');
+    setupUpload('upload-validate', 'file-validate', 'input-validate');
+
+    function setupUpload(stripId, inputId, textareaId) {
+        var strip = document.getElementById(stripId);
         var input = document.getElementById(inputId);
         var textarea = document.getElementById(textareaId);
+        if (!strip || !input || !textarea) return;
 
-        if (!area || !input || !textarea) return;
+        strip.addEventListener('click', function () { input.click(); });
 
-        area.addEventListener('click', function () { input.click(); });
-
-        area.addEventListener('dragover', function (e) {
+        strip.addEventListener('dragover', function (e) {
             e.preventDefault();
-            area.classList.add('dragover');
+            strip.classList.add('dragover');
         });
-
-        area.addEventListener('dragleave', function () {
-            area.classList.remove('dragover');
-        });
-
-        area.addEventListener('drop', function (e) {
+        strip.addEventListener('dragleave', function () { strip.classList.remove('dragover'); });
+        strip.addEventListener('drop', function (e) {
             e.preventDefault();
-            area.classList.remove('dragover');
-            var file = e.dataTransfer.files[0];
-            if (file) readFile(file, textarea);
+            strip.classList.remove('dragover');
+            if (e.dataTransfer.files[0]) readFile(e.dataTransfer.files[0], textarea);
         });
-
         input.addEventListener('change', function () {
             if (input.files[0]) readFile(input.files[0], textarea);
         });
@@ -51,11 +277,14 @@
         var reader = new FileReader();
         reader.onload = function (e) {
             textarea.value = e.target.result;
+            setStatus('Loaded file: ' + file.name);
         };
         reader.readAsText(file);
     }
 
-    // Collect settings from form
+    // ----------------------------------------------------------------
+    // Gather settings from sidebar
+    // ----------------------------------------------------------------
     function getSettings() {
         return {
             environment: val('environment'),
@@ -76,216 +305,255 @@
             localDevHost: val('localDevHost') || null,
             localDevPort: val('localDevPort') || null,
             operationPrefix: val('operationPrefix') || null,
-            includeCorsPolicy: checked('includeCorsPolicy'),
-            subscriptionRequired: checked('subscriptionRequired'),
+            includeCorsPolicy: getChecked('includeCorsPolicy'),
+            subscriptionRequired: getChecked('subscriptionRequired'),
             allowedOrigins: [],
-            allowedMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+            allowedMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+            generateProduct: getChecked('generateProduct'),
+            productDisplayName: val('productDisplayName') || null,
+            productDescription: val('productDescription') || null,
+            productSubscriptionRequired: getChecked('productSubscriptionRequired'),
+            productApprovalRequired: getChecked('productApprovalRequired')
         };
     }
 
-    function val(id) {
-        var el = document.getElementById(id);
-        return el ? el.value.trim() : '';
+    function val(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; }
+    function setVal(id, v) { var el = document.getElementById(id); if (el) el.value = v; }
+    function getChecked(id) { var el = document.getElementById(id); return el ? el.checked : false; }
+    function setChecked(id, v) { var el = document.getElementById(id); if (el) el.checked = !!v; }
+
+    // ----------------------------------------------------------------
+    // Status bar
+    // ----------------------------------------------------------------
+    function setStatus(text, isError) {
+        document.getElementById('status-text').textContent = text;
+        var dot = document.getElementById('status-dot');
+        if (isError) { dot.classList.add('error'); } else { dot.classList.remove('error'); }
     }
 
-    function checked(id) {
-        var el = document.getElementById(id);
-        return el ? el.checked : false;
+    function setOps(count) {
+        document.getElementById('status-ops').textContent = count != null ? count + ' operation(s)' : '';
     }
 
-    // Convert form submit
-    document.getElementById('settings-form').addEventListener('submit', function (e) {
-        e.preventDefault();
-
-        var openApiJson = document.getElementById('openapi-input').value.trim();
-        if (!openApiJson) {
-            showError('Please provide an OpenAPI JSON specification.');
-            return;
-        }
-
-        var settings = getSettings();
-        settings.openApiJson = openApiJson;
-
-        callApi('/api/convert', settings);
+    // ----------------------------------------------------------------
+    // Convert
+    // ----------------------------------------------------------------
+    document.getElementById('btn-convert').addEventListener('click', function () {
+        var json = document.getElementById('input-convert').value.trim();
+        if (!json) { setStatus('Error: No OpenAPI JSON provided', true); return; }
+        var body = getSettings();
+        body.openApiJson = json;
+        callApi('/api/convert', body, 'output-convert', 'messages-convert');
     });
 
-    // Update button
+    // ----------------------------------------------------------------
+    // Update
+    // ----------------------------------------------------------------
     document.getElementById('btn-update').addEventListener('click', function () {
-        var openApiJson = document.getElementById('openapi-input-update').value.trim();
-        var existingTerraform = document.getElementById('terraform-input').value.trim();
-
-        if (!openApiJson) {
-            showError('Please provide an OpenAPI JSON specification.');
-            return;
-        }
-        if (!existingTerraform) {
-            showError('Please provide existing Terraform configuration.');
-            return;
-        }
-
-        var settings = getSettings();
-        settings.openApiJson = openApiJson;
-        settings.existingTerraform = existingTerraform;
-
-        callApi('/api/convert/update', settings);
+        var json = document.getElementById('input-update-api').value.trim();
+        var tf = document.getElementById('input-update-tf').value.trim();
+        if (!json) { setStatus('Error: No OpenAPI JSON provided', true); return; }
+        if (!tf) { setStatus('Error: No existing Terraform provided', true); return; }
+        var body = getSettings();
+        body.openApiJson = json;
+        body.existingTerraform = tf;
+        callApi('/api/convert/update', body, 'output-update', 'messages-update');
     });
 
-    // Validate button
+    // ----------------------------------------------------------------
+    // Validate
+    // ----------------------------------------------------------------
     document.getElementById('btn-validate').addEventListener('click', function () {
-        var openApiJson = document.getElementById('openapi-input-validate').value.trim();
-        if (!openApiJson) {
-            showError('Please provide an OpenAPI JSON specification.');
-            return;
-        }
+        var json = document.getElementById('input-validate').value.trim();
+        if (!json) { setStatus('Error: No OpenAPI JSON provided', true); return; }
+        var body = getSettings();
+        body.openApiJson = json;
 
-        var settings = getSettings();
-        settings.openApiJson = openApiJson;
+        setStatus('Validating...');
+        var outEl = document.getElementById('output-validate');
+        outEl.className = 'output-code idle';
+        outEl.textContent = 'Validating...';
 
         fetch('/api/validate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(settings)
+            body: JSON.stringify(body)
         })
-        .then(function (res) { return res.json(); })
-        .then(function (data) { showValidationResults(data); })
-        .catch(function (err) { showValidationError(err.message); });
+        .then(function (r) { return r.json(); })
+        .then(function (data) { renderValidation(data, outEl); })
+        .catch(function (err) {
+            outEl.className = 'output-code has-error';
+            outEl.textContent = 'Request failed: ' + err.message;
+            setStatus('Validation failed', true);
+        });
     });
 
-    function callApi(url, body) {
-        var outputSection = document.getElementById('output-section');
-        outputSection.classList.remove('hidden');
+    function renderValidation(data, el) {
+        el.className = 'output-code';
+        el.innerHTML = '';
 
-        document.getElementById('terraform-output').textContent = 'Converting...';
-        hideMessages();
+        var wrap = document.createElement('div');
+        wrap.className = 'validation-result';
+
+        var h = document.createElement('h4');
+        if (data.isValid) {
+            h.className = 'valid';
+            h.textContent = 'PASS - Valid OpenAPI specification';
+            setStatus('Validation passed');
+        } else {
+            h.className = 'invalid';
+            h.textContent = 'FAIL - Validation errors found';
+            setStatus('Validation failed', true);
+        }
+        wrap.appendChild(h);
+
+        if (data.errors && data.errors.length > 0) {
+            var errUl = document.createElement('ul');
+            errUl.className = 'op-list';
+            data.errors.forEach(function (e) {
+                var li = document.createElement('li');
+                li.style.color = 'var(--red)';
+                li.textContent = e;
+                errUl.appendChild(li);
+            });
+            wrap.appendChild(errUl);
+        }
+
+        if (data.summary) {
+            var info = document.createElement('p');
+            info.style.marginTop = '12px';
+            info.innerHTML = '<strong>' + esc(data.summary.apiName) + '</strong> &mdash; ' +
+                data.summary.operationCount + ' operation(s)';
+            wrap.appendChild(info);
+
+            if (data.summary.operations && data.summary.operations.length > 0) {
+                var ul = document.createElement('ul');
+                ul.className = 'op-list';
+                data.summary.operations.forEach(function (op) {
+                    var li = document.createElement('li');
+                    var badge = document.createElement('span');
+                    badge.className = 'op-badge badge-' + op.method.toLowerCase();
+                    badge.textContent = op.method;
+                    var path = document.createElement('span');
+                    path.className = 'op-path';
+                    path.textContent = '/' + op.urlTemplate;
+                    li.appendChild(badge);
+                    li.appendChild(path);
+                    ul.appendChild(li);
+                });
+                wrap.appendChild(ul);
+            }
+            setOps(data.summary.operationCount);
+        }
+
+        el.appendChild(wrap);
+    }
+
+    // ----------------------------------------------------------------
+    // Shared API call for convert/update
+    // ----------------------------------------------------------------
+    function callApi(url, body, outputId, messagesId) {
+        var outEl = document.getElementById(outputId);
+        var msgEl = document.getElementById(messagesId);
+        msgEl.innerHTML = '';
+        outEl.className = 'output-code idle';
+        outEl.textContent = 'Processing...';
+        setStatus('Processing...');
+        setOps(null);
 
         fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
         })
-        .then(function (res) { return res.json(); })
-        .then(function (data) { displayResult(data); })
-        .catch(function (err) { displayApiError(err.message); });
-    }
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (data.success) {
+                outEl.className = 'output-code';
+                outEl.textContent = data.terraformConfig;
 
-    function displayResult(data) {
-        var outputEl = document.getElementById('terraform-output');
-        var warningsEl = document.getElementById('warnings-area');
-        var errorsEl = document.getElementById('errors-area');
-        var summaryEl = document.getElementById('summary-area');
+                if (data.summary) {
+                    addMessage(msgEl, 'success',
+                        '<strong>API:</strong> ' + esc(data.summary.displayName) +
+                        ' &nbsp;|&nbsp; <strong>Path:</strong> ' + esc(data.summary.path) +
+                        ' &nbsp;|&nbsp; <strong>Operations:</strong> ' + data.summary.operationCount);
+                    setOps(data.summary.operationCount);
+                }
 
-        hideMessages();
+                if (data.warnings && data.warnings.length > 0) {
+                    addMessage(msgEl, 'warn',
+                        '<strong>Warnings:</strong><ul>' +
+                        data.warnings.map(function (w) { return '<li>' + esc(w) + '</li>'; }).join('') +
+                        '</ul>');
+                }
 
-        if (data.success) {
-            outputEl.textContent = data.terraformConfig;
-
-            if (data.warnings && data.warnings.length > 0) {
-                warningsEl.innerHTML = '<strong>Warnings:</strong><ul>' +
-                    data.warnings.map(function (w) { return '<li>' + escapeHtml(w) + '</li>'; }).join('') +
-                    '</ul>';
-                warningsEl.classList.remove('hidden');
+                setStatus('Conversion complete');
+            } else {
+                outEl.className = 'output-code has-error';
+                outEl.textContent = '';
+                if (data.errors && data.errors.length > 0) {
+                    addMessage(msgEl, 'error',
+                        '<strong>Errors:</strong><ul>' +
+                        data.errors.map(function (e) { return '<li>' + esc(e) + '</li>'; }).join('') +
+                        '</ul>');
+                }
+                setStatus('Conversion failed', true);
             }
-
-            if (data.summary) {
-                summaryEl.innerHTML =
-                    '<strong>API:</strong> ' + escapeHtml(data.summary.displayName) +
-                    ' | <strong>Path:</strong> ' + escapeHtml(data.summary.path) +
-                    ' | <strong>Operations:</strong> ' + data.summary.operationCount;
-                summaryEl.classList.remove('hidden');
-            }
-        } else {
-            outputEl.textContent = '';
-            if (data.errors && data.errors.length > 0) {
-                errorsEl.innerHTML = '<strong>Errors:</strong><ul>' +
-                    data.errors.map(function (e) { return '<li>' + escapeHtml(e) + '</li>'; }).join('') +
-                    '</ul>';
-                errorsEl.classList.remove('hidden');
-            }
-        }
-    }
-
-    function displayApiError(message) {
-        var errorsEl = document.getElementById('errors-area');
-        errorsEl.innerHTML = '<strong>Request Failed:</strong> ' + escapeHtml(message);
-        errorsEl.classList.remove('hidden');
-        document.getElementById('terraform-output').textContent = '';
-    }
-
-    function hideMessages() {
-        document.getElementById('warnings-area').classList.add('hidden');
-        document.getElementById('errors-area').classList.add('hidden');
-        document.getElementById('summary-area').classList.add('hidden');
-    }
-
-    function showError(message) {
-        var outputSection = document.getElementById('output-section');
-        outputSection.classList.remove('hidden');
-        hideMessages();
-        var errorsEl = document.getElementById('errors-area');
-        errorsEl.innerHTML = '<strong>Error:</strong> ' + escapeHtml(message);
-        errorsEl.classList.remove('hidden');
-        document.getElementById('terraform-output').textContent = '';
-    }
-
-    function showValidationResults(data) {
-        var container = document.getElementById('validation-results');
-
-        if (data.isValid) {
-            var html = '<p class="valid"><strong>Valid OpenAPI specification</strong></p>';
-
-            if (data.summary) {
-                html += '<p style="margin-top:8px"><strong>' + escapeHtml(data.summary.apiName) +
-                    '</strong> - ' + data.summary.operationCount + ' operation(s)</p>';
-                html += '<ul>';
-                data.summary.operations.forEach(function (op) {
-                    var methodClass = 'method-' + op.method.toLowerCase();
-                    html += '<li><span class="op-method ' + methodClass + '">' +
-                        op.method + '</span> /' + escapeHtml(op.urlTemplate) + '</li>';
-                });
-                html += '</ul>';
-            }
-
-            container.innerHTML = html;
-        } else {
-            var errHtml = '<p class="invalid"><strong>Validation Failed</strong></p><ul>';
-            data.errors.forEach(function (e) {
-                errHtml += '<li style="color:var(--error)">' + escapeHtml(e) + '</li>';
-            });
-            errHtml += '</ul>';
-            container.innerHTML = errHtml;
-        }
-    }
-
-    function showValidationError(message) {
-        document.getElementById('validation-results').innerHTML =
-            '<p class="invalid">' + escapeHtml(message) + '</p>';
-    }
-
-    // Copy to clipboard
-    document.getElementById('btn-copy').addEventListener('click', function () {
-        var text = document.getElementById('terraform-output').textContent;
-        navigator.clipboard.writeText(text).then(function () {
-            var btn = document.getElementById('btn-copy');
-            btn.textContent = 'Copied!';
-            setTimeout(function () { btn.textContent = 'Copy to Clipboard'; }, 2000);
+        })
+        .catch(function (err) {
+            outEl.className = 'output-code has-error';
+            outEl.textContent = '';
+            addMessage(msgEl, 'error', '<strong>Request failed:</strong> ' + esc(err.message));
+            setStatus('Request failed', true);
         });
-    });
+    }
 
-    // Download .tf file
-    document.getElementById('btn-download').addEventListener('click', function () {
-        var text = document.getElementById('terraform-output').textContent;
-        var blob = new Blob([text], { type: 'text/plain' });
-        var url = URL.createObjectURL(blob);
-        var a = document.createElement('a');
-        a.href = url;
-        a.download = 'apim-config.tf';
-        a.click();
-        URL.revokeObjectURL(url);
-    });
-
-    function escapeHtml(str) {
+    function addMessage(container, type, html) {
         var div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
+        div.className = 'msg-block msg-' + type;
+        div.innerHTML = html;
+        container.appendChild(div);
+    }
+
+    // ----------------------------------------------------------------
+    // Copy / Download helpers
+    // ----------------------------------------------------------------
+    function setupCopy(btnId, outputId) {
+        document.getElementById(btnId).addEventListener('click', function () {
+            var text = document.getElementById(outputId).textContent;
+            navigator.clipboard.writeText(text).then(function () {
+                var btn = document.getElementById(btnId);
+                var orig = btn.textContent;
+                btn.textContent = 'Copied!';
+                setTimeout(function () { btn.textContent = orig; }, 1500);
+            });
+        });
+    }
+
+    function setupDownload(btnId, outputId) {
+        document.getElementById(btnId).addEventListener('click', function () {
+            var text = document.getElementById(outputId).textContent;
+            var blob = new Blob([text], { type: 'text/plain' });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = 'apim-config.tf';
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+    }
+
+    setupCopy('btn-copy-convert', 'output-convert');
+    setupCopy('btn-copy-update', 'output-update');
+    setupDownload('btn-download-convert', 'output-convert');
+    setupDownload('btn-download-update', 'output-update');
+
+    // ----------------------------------------------------------------
+    // Helpers
+    // ----------------------------------------------------------------
+    function esc(s) {
+        var d = document.createElement('div');
+        d.textContent = s;
+        return d.innerHTML;
     }
 })();

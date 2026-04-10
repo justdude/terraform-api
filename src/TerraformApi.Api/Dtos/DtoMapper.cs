@@ -28,7 +28,12 @@ public static class DtoMapper
             IncludeCorsPolicy = request.IncludeCorsPolicy,
             OperationPrefix = request.OperationPrefix,
             AllowedOrigins = request.AllowedOrigins,
-            AllowedMethods = request.AllowedMethods
+            AllowedMethods = request.AllowedMethods,
+            GenerateProduct = request.GenerateProduct,
+            ProductDisplayName = request.ProductDisplayName,
+            ProductDescription = request.ProductDescription,
+            ProductSubscriptionRequired = request.ProductSubscriptionRequired,
+            ProductApprovalRequired = request.ProductApprovalRequired
         };
 
     public static ConvertResponse ToResponse(ConversionResult result)

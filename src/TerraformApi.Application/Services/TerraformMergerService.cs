@@ -5,6 +5,11 @@ using TerraformApi.Domain.Models;
 
 namespace TerraformApi.Application.Services;
 
+/// <summary>
+/// Merges a newly-generated Terraform configuration with an existing one,
+/// preserving any operation blocks that appear in the existing config but are
+/// absent from the new OpenAPI spec (e.g. custom or manually-added operations).
+/// </summary>
 public sealed partial class TerraformMergerService : ITerraformMerger
 {
     private readonly ITerraformGenerator _generator;
@@ -14,6 +19,14 @@ public sealed partial class TerraformMergerService : ITerraformMerger
         _generator = generator;
     }
 
+    /// <summary>
+    /// Generates fresh Terraform from <paramref name="newConfiguration"/> and then
+    /// re-inserts any operation blocks from <paramref name="existingTerraform"/> whose
+    /// <c>operation_id</c> values are not present in the new spec.
+    /// </summary>
+    /// <param name="existingTerraform">The current HCL that may contain custom operations.</param>
+    /// <param name="newConfiguration">The parsed APIM configuration derived from the updated OpenAPI spec.</param>
+    /// <returns>Merged HCL string.</returns>
     public string Merge(string existingTerraform, ApimConfiguration newConfiguration)
     {
         var existingOperationIds = ExtractExistingOperationIds(existingTerraform);
@@ -35,6 +48,10 @@ public sealed partial class TerraformMergerService : ITerraformMerger
         return InsertPreservedOperations(newConfig, preservedOperations);
     }
 
+    /// <summary>
+    /// Scans the HCL string for all <c>operation_id = "..."</c> assignments and
+    /// returns the set of IDs found (case-insensitive).
+    /// </summary>
     private static HashSet<string> ExtractExistingOperationIds(string terraform)
     {
         var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -48,6 +65,11 @@ public sealed partial class TerraformMergerService : ITerraformMerger
         return ids;
     }
 
+    /// <summary>
+    /// Determines which operation IDs from the existing config are absent in the new
+    /// spec, then extracts the raw HCL block text for each of those operations so
+    /// they can be re-inserted into the merged output.
+    /// </summary>
     private static List<string> ExtractPreservedOperations(
         string terraform,
         HashSet<string> existingIds,
@@ -76,6 +98,10 @@ public sealed partial class TerraformMergerService : ITerraformMerger
         return preserved;
     }
 
+    /// <summary>
+    /// Parses the <c>api_operations = [...]</c> section of the HCL line-by-line,
+    /// using a brace-depth counter to delimit individual operation blocks.
+    /// </summary>
     private static List<string> ExtractOperationBlocks(string terraform)
     {
         var blocks = new List<string>();
@@ -132,6 +158,10 @@ public sealed partial class TerraformMergerService : ITerraformMerger
         return blocks;
     }
 
+    /// <summary>
+    /// Inserts the preserved operation blocks into the <c>api_operations</c> list
+    /// of the newly-generated HCL, immediately before the list's closing bracket.
+    /// </summary>
     private static string InsertPreservedOperations(string newConfig, List<string> preservedOperations)
     {
         var lines = newConfig.Split('\n').ToList();
@@ -143,7 +173,9 @@ public sealed partial class TerraformMergerService : ITerraformMerger
             if (lines[i].Trim() == "]" && i > 0)
             {
                 // Check if this is the api_operations closing bracket
-                // by looking backwards for api_operations
+                // by looking backwards for api_operations.
+                // NOTE: Do NOT break early on " = [" — nested blocks like
+                // "response = [" would prematurely abort the search.
                 for (var j = i - 1; j >= 0; j--)
                 {
                     if (lines[j].Contains("api_operations"))
@@ -151,8 +183,6 @@ public sealed partial class TerraformMergerService : ITerraformMerger
                         insertIndex = i;
                         break;
                     }
-                    if (lines[j].Trim() == "[" || lines[j].Contains(" = ["))
-                        break;
                 }
             }
 

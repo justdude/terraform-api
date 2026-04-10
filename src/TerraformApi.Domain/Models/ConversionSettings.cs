@@ -24,4 +24,11 @@ public sealed record ConversionSettings
     public string? OperationPrefix { get; init; }
     public List<string> AllowedOrigins { get; init; } = [];
     public List<string> AllowedMethods { get; init; } = ["GET", "POST", "PUT", "DELETE", "OPTIONS"];
+
+    // Product generation
+    public bool GenerateProduct { get; init; }
+    public string? ProductDisplayName { get; init; }
+    public string? ProductDescription { get; init; }
+    public bool ProductSubscriptionRequired { get; init; }
+    public bool ProductApprovalRequired { get; init; }
 }

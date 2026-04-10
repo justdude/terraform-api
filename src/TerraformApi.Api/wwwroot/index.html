@@ -7,213 +7,311 @@
     <link rel="stylesheet" href="/css/styles.css">
 </head>
 <body>
-    <header>
-        <div class="container">
-            <h1>OpenAPI &rarr; APIM Terraform</h1>
-            <p class="subtitle">Convert OpenAPI specifications to Azure API Management Terraform configurations</p>
+
+<div class="screen-frame">
+    <!-- Title bar (macOS-style window chrome) -->
+    <div class="title-bar">
+        <div class="title-bar-dots"><span></span><span></span><span></span></div>
+        <div class="title-bar-text"><strong>terraform-apim</strong> &mdash; openapi-to-terraform converter</div>
+    </div>
+
+    <!-- Toolbar with tabs + environment selector -->
+    <div class="toolbar">
+        <button class="toolbar-tab active" data-tab="convert">Convert</button>
+        <button class="toolbar-tab" data-tab="update">Update</button>
+        <button class="toolbar-tab" data-tab="validate">Validate</button>
+        <button class="toolbar-tab" data-tab="environments">Environments</button>
+
+        <div class="toolbar-right">
+            <div class="env-selector">
+                <span>ENV:</span>
+                <select id="env-select">
+                    <option value="">-- custom --</option>
+                </select>
+            </div>
         </div>
-    </header>
+    </div>
 
-    <main class="container">
-        <div class="tabs">
-            <button class="tab active" data-tab="convert">Convert</button>
-            <button class="tab" data-tab="update">Update Existing</button>
-            <button class="tab" data-tab="validate">Validate</button>
+    <div class="screen-body">
+        <!-- =================== SIDEBAR (Settings) =================== -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">APIM Configuration</div>
+
+            <div class="sidebar-section">
+                <h3>Core Settings</h3>
+                <div class="field-row">
+                    <div class="field">
+                        <label for="environment">Environment</label>
+                        <input type="text" id="environment" value="dev">
+                    </div>
+                    <div class="field">
+                        <label for="apiGroupName">API Group Name</label>
+                        <input type="text" id="apiGroupName" placeholder="my-api-group">
+                    </div>
+                </div>
+                <div class="field-row">
+                    <div class="field">
+                        <label for="stageGroupName">Resource Group</label>
+                        <input type="text" id="stageGroupName" placeholder="rg-apim-dev">
+                    </div>
+                    <div class="field">
+                        <label for="apimName">APIM Instance</label>
+                        <input type="text" id="apimName" placeholder="apim-company-dev">
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>Paths &amp; Gateway</h3>
+                <div class="field-row">
+                    <div class="field">
+                        <label for="apiPathPrefix">Path Prefix</label>
+                        <input type="text" id="apiPathPrefix" placeholder="myapp">
+                    </div>
+                    <div class="field">
+                        <label for="apiPathSuffix">Path Suffix</label>
+                        <input type="text" id="apiPathSuffix" placeholder="api">
+                    </div>
+                </div>
+                <div class="field-row">
+                    <div class="field">
+                        <label for="apiGatewayHost">Gateway Host</label>
+                        <input type="text" id="apiGatewayHost" placeholder="api.company.com">
+                    </div>
+                    <div class="field">
+                        <label for="backendServicePath">Backend Path</label>
+                        <input type="text" id="backendServicePath" placeholder="my-service">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Advanced settings (collapsible) -->
+            <button class="advanced-toggle" id="advanced-toggle">
+                <span class="arrow">&#9654;</span> Advanced Settings
+            </button>
+            <div class="advanced-body" id="advanced-body">
+                <div class="field-row">
+                    <div class="field">
+                        <label for="apiName">API Name (auto)</label>
+                        <input type="text" id="apiName" placeholder="From OpenAPI title">
+                    </div>
+                    <div class="field">
+                        <label for="apiVersion">API Version</label>
+                        <input type="text" id="apiVersion" value="v1">
+                    </div>
+                </div>
+                <div class="field-row">
+                    <div class="field">
+                        <label for="revision">Revision</label>
+                        <input type="text" id="revision" value="1">
+                    </div>
+                    <div class="field">
+                        <label for="productId">Product ID</label>
+                        <input type="text" id="productId" placeholder="Optional">
+                    </div>
+                </div>
+                <div class="field-row">
+                    <div class="field">
+                        <label for="frontendHost">Frontend Host</label>
+                        <input type="text" id="frontendHost" placeholder="portal">
+                    </div>
+                    <div class="field">
+                        <label for="companyDomain">Company Domain</label>
+                        <input type="text" id="companyDomain" placeholder="company.com">
+                    </div>
+                </div>
+                <div class="field-row">
+                    <div class="field">
+                        <label for="localDevHost">Local Dev Host</label>
+                        <input type="text" id="localDevHost" value="localhost">
+                    </div>
+                    <div class="field">
+                        <label for="localDevPort">Local Dev Port</label>
+                        <input type="text" id="localDevPort" value="3000">
+                    </div>
+                </div>
+                <div class="field">
+                    <label for="operationPrefix">Operation Prefix (auto)</label>
+                    <input type="text" id="operationPrefix" placeholder="From API name">
+                </div>
+                <div style="margin-top:8px">
+                    <label class="field-check">
+                        <input type="checkbox" id="includeCorsPolicy" checked> Include CORS Policy
+                    </label>
+                    <label class="field-check">
+                        <input type="checkbox" id="subscriptionRequired"> Subscription Required
+                    </label>
+                </div>
+
+                <div style="margin-top:14px; padding-top:10px; border-top:1px solid var(--border)">
+                    <label class="field-check" style="margin-bottom:8px">
+                        <input type="checkbox" id="generateProduct"> Generate Product Block
+                    </label>
+                    <div id="product-fields" style="display:none">
+                        <div class="field-row" style="margin-top:6px">
+                            <div class="field">
+                                <label for="productDisplayName">Product Display Name</label>
+                                <input type="text" id="productDisplayName" placeholder="From API title">
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label for="productDescription">Product Description</label>
+                            <input type="text" id="productDescription" placeholder="Optional">
+                        </div>
+                        <div style="margin-top:6px">
+                            <label class="field-check">
+                                <input type="checkbox" id="productSubscriptionRequired"> Product Subscription Required
+                            </label>
+                            <label class="field-check">
+                                <input type="checkbox" id="productApprovalRequired"> Product Approval Required
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- =================== WORKSPACE =================== -->
+        <div class="workspace">
+            <!-- ---- Convert tab ---- -->
+            <div class="tab-pane active" id="pane-convert">
+                <div class="split-view">
+                    <div class="pane">
+                        <div class="pane-header">
+                            <span>OpenAPI Input</span>
+                            <span class="tag tag-input">JSON</span>
+                        </div>
+                        <div class="upload-strip" id="upload-convert">
+                            <span class="icon">&#128194;</span> Drop OpenAPI JSON or click to browse
+                            <input type="file" id="file-convert" accept=".json,.yaml,.yml" hidden>
+                        </div>
+                        <div class="pane-body">
+                            <textarea class="code-editor" id="input-convert"
+                                placeholder="// Paste your OpenAPI 3.x JSON here...&#10;{&#10;  &quot;openapi&quot;: &quot;3.0.1&quot;,&#10;  &quot;info&quot;: { &quot;title&quot;: &quot;My API&quot;, ... }&#10;}"></textarea>
+                        </div>
+                    </div>
+                    <div class="pane">
+                        <div class="pane-header">
+                            <span>Terraform Output</span>
+                            <span class="tag tag-output">HCL</span>
+                        </div>
+                        <div class="pane-body">
+                            <div id="messages-convert"></div>
+                            <div class="output-code idle cursor-blink" id="output-convert">Awaiting input...</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="action-bar">
+                    <button class="btn btn-execute" id="btn-convert">&#9654; Execute Convert</button>
+                    <button class="btn btn-ghost" id="btn-copy-convert">Copy</button>
+                    <button class="btn btn-ghost" id="btn-download-convert">Download .tf</button>
+                </div>
+            </div>
+
+            <!-- ---- Update tab ---- -->
+            <div class="tab-pane" id="pane-update">
+                <div class="split-view">
+                    <div class="pane">
+                        <div class="pane-header">
+                            <span>OpenAPI Input</span>
+                            <span class="tag tag-input">JSON</span>
+                        </div>
+                        <div class="upload-strip" id="upload-update-api">
+                            <span class="icon">&#128194;</span> Drop OpenAPI JSON
+                            <input type="file" id="file-update-api" accept=".json,.yaml,.yml" hidden>
+                        </div>
+                        <div class="pane-body" style="flex:1">
+                            <textarea class="code-editor" id="input-update-api" style="flex:1"
+                                placeholder="// Paste new OpenAPI JSON..."></textarea>
+                        </div>
+                        <div class="pane-header" style="border-top:1px solid var(--border)">
+                            <span>Existing Terraform</span>
+                            <span class="tag tag-warn">HCL</span>
+                        </div>
+                        <div class="upload-strip" id="upload-update-tf">
+                            <span class="icon">&#128194;</span> Drop existing .tf file
+                            <input type="file" id="file-update-tf" accept=".tf,.hcl,.tfvars" hidden>
+                        </div>
+                        <div class="pane-body" style="flex:1">
+                            <textarea class="code-editor" id="input-update-tf" style="flex:1"
+                                placeholder="// Paste existing Terraform config..."></textarea>
+                        </div>
+                    </div>
+                    <div class="pane">
+                        <div class="pane-header">
+                            <span>Merged Output</span>
+                            <span class="tag tag-output">HCL</span>
+                        </div>
+                        <div class="pane-body">
+                            <div id="messages-update"></div>
+                            <div class="output-code idle cursor-blink" id="output-update">Awaiting input...</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="action-bar">
+                    <button class="btn btn-execute" id="btn-update">&#9654; Execute Update</button>
+                    <button class="btn btn-ghost" id="btn-copy-update">Copy</button>
+                    <button class="btn btn-ghost" id="btn-download-update">Download .tf</button>
+                </div>
+            </div>
+
+            <!-- ---- Environments tab ---- -->
+            <div class="tab-pane" id="pane-environments">
+                <div class="env-tab-header">
+                    <span class="env-tab-title">Environment Presets</span>
+                    <div class="env-tab-actions">
+                        <button class="btn btn-ghost" id="btn-env-add">+ Add Environment</button>
+                        <button class="btn btn-ghost" id="btn-env-reset">Reset to Defaults</button>
+                    </div>
+                </div>
+                <div class="env-grid" id="env-grid">
+                    <!-- Cards injected by JS -->
+                </div>
+            </div>
+
+            <!-- ---- Validate tab ---- -->
+            <div class="tab-pane" id="pane-validate">
+                <div class="split-view">
+                    <div class="pane">
+                        <div class="pane-header">
+                            <span>OpenAPI Input</span>
+                            <span class="tag tag-input">JSON</span>
+                        </div>
+                        <div class="upload-strip" id="upload-validate">
+                            <span class="icon">&#128194;</span> Drop OpenAPI JSON
+                            <input type="file" id="file-validate" accept=".json,.yaml,.yml" hidden>
+                        </div>
+                        <div class="pane-body">
+                            <textarea class="code-editor" id="input-validate"
+                                placeholder="// Paste OpenAPI JSON to validate..."></textarea>
+                        </div>
+                    </div>
+                    <div class="pane">
+                        <div class="pane-header">
+                            <span>Validation Report</span>
+                            <span class="tag tag-output">RESULT</span>
+                        </div>
+                        <div class="pane-body">
+                            <div class="output-code idle cursor-blink" id="output-validate">Run validation to see results...</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="action-bar">
+                    <button class="btn btn-execute" id="btn-validate">&#9654; Run Validation</button>
+                </div>
+            </div>
         </div>
+    </div>
 
-        <!-- Convert Tab -->
-        <section id="tab-convert" class="tab-content active">
-            <div class="grid">
-                <div class="panel">
-                    <h2>OpenAPI Specification</h2>
-                    <div class="upload-area" id="upload-area-convert">
-                        <p>Drag & drop OpenAPI JSON file here or click to browse</p>
-                        <input type="file" id="file-input-convert" accept=".json,.yaml,.yml" hidden>
-                    </div>
-                    <textarea id="openapi-input" placeholder="Or paste your OpenAPI JSON here..." rows="12"></textarea>
-                </div>
+    <!-- Status bar -->
+    <div class="status-bar">
+        <span class="status-dot" id="status-dot"></span>
+        <span class="status-text" id="status-text">Ready</span>
+        <span id="status-ops"></span>
+        <span>APIM Terraform Converter v1.0</span>
+    </div>
+</div>
 
-                <div class="panel">
-                    <h2>APIM Settings</h2>
-                    <form id="settings-form">
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="environment">Environment *</label>
-                                <input type="text" id="environment" value="dev" required>
-                            </div>
-                            <div class="form-group">
-                                <label for="apiGroupName">API Group Name *</label>
-                                <input type="text" id="apiGroupName" placeholder="my-api-group" required>
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="stageGroupName">Resource Group *</label>
-                                <input type="text" id="stageGroupName" placeholder="rg-apim-dev" required>
-                            </div>
-                            <div class="form-group">
-                                <label for="apimName">APIM Instance Name *</label>
-                                <input type="text" id="apimName" placeholder="apim-mycompany-dev" required>
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="apiPathPrefix">API Path Prefix *</label>
-                                <input type="text" id="apiPathPrefix" placeholder="myapp" required>
-                            </div>
-                            <div class="form-group">
-                                <label for="apiPathSuffix">API Path Suffix *</label>
-                                <input type="text" id="apiPathSuffix" placeholder="api" required>
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="apiGatewayHost">Gateway Host *</label>
-                                <input type="text" id="apiGatewayHost" placeholder="api.mycompany.com" required>
-                            </div>
-                            <div class="form-group">
-                                <label for="backendServicePath">Backend Service Path *</label>
-                                <input type="text" id="backendServicePath" placeholder="my-service" required>
-                            </div>
-                        </div>
-
-                        <details class="advanced-settings">
-                            <summary>Advanced Settings</summary>
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="apiName">API Name (auto-generated if empty)</label>
-                                    <input type="text" id="apiName" placeholder="Auto from OpenAPI title">
-                                </div>
-                                <div class="form-group">
-                                    <label for="apiVersion">API Version</label>
-                                    <input type="text" id="apiVersion" value="v1">
-                                </div>
-                            </div>
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="revision">Revision</label>
-                                    <input type="text" id="revision" value="1">
-                                </div>
-                                <div class="form-group">
-                                    <label for="productId">Product ID</label>
-                                    <input type="text" id="productId" placeholder="Optional">
-                                </div>
-                            </div>
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="frontendHost">Frontend Host</label>
-                                    <input type="text" id="frontendHost" placeholder="myapp-portal">
-                                </div>
-                                <div class="form-group">
-                                    <label for="companyDomain">Company Domain</label>
-                                    <input type="text" id="companyDomain" placeholder="company.com">
-                                </div>
-                            </div>
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="localDevHost">Local Dev Host</label>
-                                    <input type="text" id="localDevHost" value="localhost">
-                                </div>
-                                <div class="form-group">
-                                    <label for="localDevPort">Local Dev Port</label>
-                                    <input type="text" id="localDevPort" value="3000">
-                                </div>
-                            </div>
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="operationPrefix">Operation Prefix</label>
-                                    <input type="text" id="operationPrefix" placeholder="Auto from API name">
-                                </div>
-                                <div class="form-group checkbox-group">
-                                    <label>
-                                        <input type="checkbox" id="includeCorsPolicy" checked> Include CORS Policy
-                                    </label>
-                                    <label>
-                                        <input type="checkbox" id="subscriptionRequired"> Subscription Required
-                                    </label>
-                                </div>
-                            </div>
-                        </details>
-
-                        <button type="submit" class="btn btn-primary">Convert to Terraform</button>
-                    </form>
-                </div>
-            </div>
-        </section>
-
-        <!-- Update Tab -->
-        <section id="tab-update" class="tab-content">
-            <div class="grid">
-                <div class="panel">
-                    <h2>OpenAPI Specification</h2>
-                    <div class="upload-area" id="upload-area-update">
-                        <p>Drag & drop OpenAPI JSON file here or click to browse</p>
-                        <input type="file" id="file-input-update" accept=".json,.yaml,.yml" hidden>
-                    </div>
-                    <textarea id="openapi-input-update" placeholder="Or paste your OpenAPI JSON here..." rows="8"></textarea>
-
-                    <h2>Existing Terraform Config</h2>
-                    <div class="upload-area" id="upload-area-terraform">
-                        <p>Drag & drop existing Terraform file here or click to browse</p>
-                        <input type="file" id="file-input-terraform" accept=".tf,.hcl,.tfvars" hidden>
-                    </div>
-                    <textarea id="terraform-input" placeholder="Or paste your existing Terraform config here..." rows="8"></textarea>
-                </div>
-
-                <div class="panel">
-                    <h2>APIM Settings</h2>
-                    <p class="hint">Same settings as the Convert tab will be used.</p>
-                    <button type="button" id="btn-update" class="btn btn-primary">Update Terraform</button>
-                </div>
-            </div>
-        </section>
-
-        <!-- Validate Tab -->
-        <section id="tab-validate" class="tab-content">
-            <div class="grid">
-                <div class="panel">
-                    <h2>OpenAPI Specification</h2>
-                    <div class="upload-area" id="upload-area-validate">
-                        <p>Drag & drop OpenAPI JSON file here or click to browse</p>
-                        <input type="file" id="file-input-validate" accept=".json,.yaml,.yml" hidden>
-                    </div>
-                    <textarea id="openapi-input-validate" placeholder="Or paste your OpenAPI JSON here..." rows="12"></textarea>
-                    <button type="button" id="btn-validate" class="btn btn-secondary">Validate for APIM</button>
-                </div>
-                <div class="panel">
-                    <h2>Validation Results</h2>
-                    <div id="validation-results" class="results-area">
-                        <p class="placeholder">Results will appear here after validation...</p>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Output Section -->
-        <section id="output-section" class="output-section hidden">
-            <div class="output-header">
-                <h2>Generated Terraform Configuration</h2>
-                <div class="output-actions">
-                    <button type="button" id="btn-copy" class="btn btn-secondary">Copy to Clipboard</button>
-                    <button type="button" id="btn-download" class="btn btn-secondary">Download .tf</button>
-                </div>
-            </div>
-
-            <div id="warnings-area" class="warnings hidden"></div>
-            <div id="errors-area" class="errors hidden"></div>
-
-            <div id="summary-area" class="summary hidden"></div>
-
-            <pre><code id="terraform-output"></code></pre>
-        </section>
-    </main>
-
-    <footer>
-        <div class="container">
-            <p>OpenAPI to Azure APIM Terraform Converter &mdash; Validates against Microsoft APIM naming rules</p>
-        </div>
-    </footer>
-
-    <script src="/js/app.js"></script>
+<script src="/js/app.js"></script>
 </body>
 </html>
