@@ -11,9 +11,11 @@ src/
   TerraformApi.Domain/        # Models, interfaces, validation rules — no external dependencies
   TerraformApi.Application/   # Business logic (parser, generator, merger, validator)
   TerraformApi.Api/           # Minimal API endpoints + static frontend (wwwroot)
+  TerraformApi.Mcp/           # MCP server for AI assistant integration (stdio transport)
 tests/
-  TerraformApi.Application.Tests/   # Unit tests for Application services
-  TerraformApi.Api.Tests/           # Integration tests for API endpoints
+  TerraformApi.Application.Tests/   # Unit tests for Application services (129 tests)
+  TerraformApi.Api.Tests/           # Integration tests for API endpoints (28 tests)
+  TerraformApi.Mcp.Tests/           # Unit tests for MCP server tools (41 tests)
 ```
 
 ## Features
@@ -30,6 +32,7 @@ tests/
   - API path: 0–400 chars, alphanumeric + hyphens + dots + slashes
   - Resource group: 1–90 chars, alphanumeric + hyphens + underscores + dots + parentheses
 - Web UI with drag-and-drop file upload, no Node.js required
+- **MCP server** for AI assistant integration (Claude Code, Claude Desktop)
 - Docker-ready for cloud deployment
 
 ## Prerequisites
@@ -64,14 +67,17 @@ ASPNETCORE_ENVIRONMENT=Development dotnet run --project src/TerraformApi.Api
 ### Running Tests
 
 ```bash
-# Run all tests (Application unit tests + API integration tests)
+# Run all tests (198 total: Application + API + MCP)
 dotnet test
 
-# Run only Application (unit) tests
+# Run only Application (unit) tests — 129 tests
 dotnet test tests/TerraformApi.Application.Tests
 
-# Run only API (integration) tests
+# Run only API (integration) tests — 28 tests
 dotnet test tests/TerraformApi.Api.Tests
+
+# Run only MCP server (unit) tests — 41 tests
+dotnet test tests/TerraformApi.Mcp.Tests
 
 # With detailed output
 dotnet test --verbosity normal
@@ -456,6 +462,155 @@ Or in `appsettings.json`:
 ```
 
 When `AllowedCorsOrigins` is empty (default), development mode allows all origins. In production, set this explicitly.
+
+---
+
+## MCP Server (Model Context Protocol)
+
+An MCP server is included so AI assistants (Claude Code, Claude Desktop, etc.) can call the conversion tools directly — no HTTP needed.
+
+### Architecture
+
+The MCP server (`src/TerraformApi.Mcp`) is a .NET console app that communicates via **stdio** transport. It references the Application and Domain layers directly, so there's no HTTP overhead.
+
+```
+src/TerraformApi.Mcp/
+  Program.cs              # Host setup with stdio transport
+  Tools/
+    ConvertTool.cs        # convert_openapi_to_terraform
+    UpdateTool.cs         # update_terraform_from_openapi
+    ValidateTool.cs       # validate_openapi_for_apim
+    EnvironmentsTool.cs   # list_environment_presets
+  appsettings.json        # Environment presets (same as API project)
+  mcp-config.json         # Example config for Claude Desktop / Claude Code
+```
+
+### Available Tools
+
+| Tool | Description |
+|---|---|
+| `convert_openapi_to_terraform` | Converts an OpenAPI JSON spec into a full APIM Terraform HCL block |
+| `update_terraform_from_openapi` | Merges a new OpenAPI spec into existing Terraform, preserving custom operations |
+| `validate_openapi_for_apim` | Validates an OpenAPI spec against APIM naming rules (no Terraform output) |
+| `list_environment_presets` | Lists configured APIM environment presets (resource groups, hosts, etc.) |
+
+### Tool Parameters
+
+#### `convert_openapi_to_terraform`
+
+**Required parameters:**
+
+| Parameter | Description | Example |
+|---|---|---|
+| `openApiJson` | OpenAPI 3.x JSON string | `{"openapi":"3.0.1",...}` |
+| `environment` | Target environment | `"dev"`, `"staging"`, `"prod"` |
+| `apiGroupName` | Terraform variable group name | `"my-api-group"` |
+| `stageGroupName` | Azure resource group name | `"rg-apim-dev"` |
+| `apimName` | APIM instance name | `"apim-company-dev"` |
+| `apiPathPrefix` | API path prefix | `"myapp"` |
+| `apiPathSuffix` | API path suffix | `"api"` |
+| `apiGatewayHost` | Gateway hostname | `"api.dev.company.com"` |
+| `backendServicePath` | Backend service path | `"my-service"` |
+
+**Optional parameters:** `apiName`, `apiDisplayName`, `apiVersion` (default `"v1"`), `revision` (default `"1"`), `subscriptionRequired` (default `false`), `includeCorsPolicy` (default `false`), `frontendHost`, `companyDomain`, `localDevHost`, `localDevPort`, `productId`, `generateProduct` (default `false`), `productDisplayName`, `productDescription`, `productSubscriptionRequired`, `productApprovalRequired`
+
+#### `update_terraform_from_openapi`
+
+Same required parameters as `convert_openapi_to_terraform`, plus:
+
+| Parameter | Description |
+|---|---|
+| `existingTerraform` | The existing Terraform HCL to merge into |
+
+#### `validate_openapi_for_apim`
+
+| Parameter | Required | Description |
+|---|---|---|
+| `openApiJson` | Yes | OpenAPI 3.x JSON string to validate |
+| `environment` | No | Environment name for operation ID generation (default: `"dev"`) |
+
+#### `list_environment_presets`
+
+| Parameter | Required | Description |
+|---|---|---|
+| `environmentName` | No | Specific environment to retrieve. Omit to list all. |
+
+### Running Standalone
+
+```bash
+# From the repository root
+dotnet run --project src/TerraformApi.Mcp
+```
+
+The server communicates over stdio (stdin/stdout) using [JSON-RPC 2.0](https://www.jsonrpc.org/specification) per the [MCP specification](https://modelcontextprotocol.io/). It is not meant to be used interactively — connect it to an MCP-compatible client.
+
+### Adding to Claude Code
+
+Add to your project's `.mcp.json` or global Claude Code settings:
+
+```json
+{
+  "mcpServers": {
+    "terraform-api": {
+      "command": "dotnet",
+      "args": ["run", "--project", "src/TerraformApi.Mcp"]
+    }
+  }
+}
+```
+
+### Adding to Claude Desktop
+
+Add to `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "terraform-api": {
+      "command": "dotnet",
+      "args": ["run", "--project", "/full/path/to/src/TerraformApi.Mcp"]
+    }
+  }
+}
+```
+
+### Published Binary (Alternative)
+
+For faster startup, publish the MCP server as a self-contained binary:
+
+```bash
+dotnet publish src/TerraformApi.Mcp -c Release -o ./publish/mcp
+```
+
+Then reference the binary directly in your MCP config:
+
+```json
+{
+  "mcpServers": {
+    "terraform-api": {
+      "command": "/full/path/to/publish/mcp/TerraformApi.Mcp"
+    }
+  }
+}
+```
+
+### Customising Environment Presets
+
+Edit `src/TerraformApi.Mcp/appsettings.json` to configure environment presets. The `list_environment_presets` tool reads from this file to provide auto-fill values.
+
+### MCP Server Tests
+
+The MCP tools are tested independently from the MCP transport layer. Tests call the tool methods directly with real Application services (no mocking):
+
+```bash
+dotnet test tests/TerraformApi.Mcp.Tests
+```
+
+41 tests cover:
+- **ConvertTool** (11 tests): valid conversion, error handling, CORS, products, custom names, multi-environment
+- **UpdateTool** (6 tests): merge operations, add operations, error handling, CORS in updates
+- **ValidateTool** (11 tests): valid specs, invalid JSON, operation detection, environment suffixes, fallback IDs
+- **EnvironmentsTool** (13 tests): list all, specific lookup, missing configs, field formatting, error handling
 
 ---
 

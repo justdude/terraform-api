@@ -3,9 +3,11 @@
     <Project Path="src/TerraformApi.Api/TerraformApi.Api.csproj" />
     <Project Path="src/TerraformApi.Application/TerraformApi.Application.csproj" />
     <Project Path="src/TerraformApi.Domain/TerraformApi.Domain.csproj" />
+    <Project Path="src/TerraformApi.Mcp/TerraformApi.Mcp.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/TerraformApi.Api.Tests/TerraformApi.Api.Tests.csproj" />
     <Project Path="tests/TerraformApi.Application.Tests/TerraformApi.Application.Tests.csproj" />
+    <Project Path="tests/TerraformApi.Mcp.Tests/TerraformApi.Mcp.Tests.csproj" />
   </Folder>
 </Solution>
