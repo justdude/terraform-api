@@ -7,7 +7,7 @@ namespace TerraformApi.Api.Endpoints;
 
 /// <summary>
 /// Maps all API endpoints for the OpenAPI-to-Terraform conversion service.
-/// Endpoints cover conversion, update (merge), validation, environment presets, and health.
+/// Endpoints cover conversion, update (merge), validation, transform, environment presets, and health.
 /// </summary>
 public static class ConversionEndpoints
 {
@@ -25,6 +25,14 @@ public static class ConversionEndpoints
             .WithName("UpdateTerraformFromOpenApi")
             .WithDescription("Updates an existing Terraform configuration with changes from an OpenAPI specification, preserving custom operations")
             .Produces<ConvertResponse>()
+            .ProducesProblem(400);
+
+        api.MapPost("/transform-environment", TransformEnvironment)
+            .WithName("TransformEnvironment")
+            .WithDescription("Transforms a Terraform APIM configuration from one environment to another, " +
+                             "optionally merging with an existing target environment's config. " +
+                             "Operations are matched by url_template + HTTP method across environments.")
+            .Produces<TransformResponse>()
             .ProducesProblem(400);
 
         api.MapPost("/validate", Validate)
@@ -86,6 +94,24 @@ public static class ConversionEndpoints
         return result.Success
             ? Results.Ok(DtoMapper.ToResponse(result))
             : Results.BadRequest(DtoMapper.ToResponse(result));
+    }
+
+    /// <summary>
+    /// Transforms a source environment's Terraform to a target environment.
+    /// Optionally merges with an existing target config, matching operations by
+    /// url_template + HTTP method (not operation_id, since IDs differ across environments).
+    /// </summary>
+    private static IResult TransformEnvironment(TransformRequest request, IEnvironmentTransformer transformer)
+    {
+        if (string.IsNullOrWhiteSpace(request.SourceTerraform))
+            return Results.BadRequest(new { error = "Source Terraform content is required." });
+
+        var settings = DtoMapper.ToTransformSettings(request);
+        var result = transformer.Transform(request.SourceTerraform, settings, request.ExistingTargetTerraform);
+
+        return result.Success
+            ? Results.Ok(DtoMapper.ToTransformResponse(result))
+            : Results.BadRequest(DtoMapper.ToTransformResponse(result));
     }
 
     /// <summary>

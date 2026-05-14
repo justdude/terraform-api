@@ -13,6 +13,7 @@ public static class DependencyInjection
         services.AddSingleton<ITerraformGenerator, TerraformGeneratorService>();
         services.AddSingleton<ITerraformMerger, TerraformMergerService>();
         services.AddSingleton<IConversionOrchestrator, ConversionOrchestratorService>();
+        services.AddSingleton<IEnvironmentTransformer, EnvironmentTransformerService>();
 
         return services;
     }

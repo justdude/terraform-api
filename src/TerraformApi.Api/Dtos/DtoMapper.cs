@@ -36,6 +36,21 @@ public static class DtoMapper
             ProductApprovalRequired = request.ProductApprovalRequired
         };
 
+    public static EnvironmentTransformSettings ToTransformSettings(TransformRequest request) =>
+        new()
+        {
+            SourceEnvironment = request.SourceEnvironment,
+            TargetEnvironment = request.TargetEnvironment,
+            TargetStageGroupName = request.TargetStageGroupName,
+            TargetApimName = request.TargetApimName,
+            TargetApiGatewayHost = request.TargetApiGatewayHost,
+            TargetFrontendHost = request.TargetFrontendHost,
+            TargetCompanyDomain = request.TargetCompanyDomain,
+            TargetLocalDevHost = request.TargetLocalDevHost,
+            TargetLocalDevPort = request.TargetLocalDevPort,
+            TargetSubscriptionRequired = request.TargetSubscriptionRequired
+        };
+
     public static ConvertResponse ToResponse(ConversionResult result)
     {
         var response = new ConvertResponse
@@ -68,4 +83,23 @@ public static class DtoMapper
 
         return response;
     }
+
+    public static TransformResponse ToTransformResponse(EnvironmentTransformResult result) =>
+        new()
+        {
+            Success = result.Success,
+            TransformedTerraform = result.TransformedTerraform,
+            DetectedSourceEnvironment = result.DetectedSourceEnvironment,
+            Summary = result.Summary != null
+                ? new TransformSummaryDto
+                {
+                    TotalOperations = result.Summary.TotalOperations,
+                    SyncedOperations = result.Summary.SyncedOperations,
+                    AddedOperations = result.Summary.AddedOperations,
+                    PreservedOperations = result.Summary.PreservedOperations
+                }
+                : null,
+            Warnings = result.Warnings,
+            Errors = result.Errors
+        };
 }
