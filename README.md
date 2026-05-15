@@ -9,13 +9,13 @@ Clean Architecture with clearly separated concerns:
 ```
 src/
   TerraformApi.Domain/        # Models, interfaces, validation rules — no external dependencies
-  TerraformApi.Application/   # Business logic (parser, generator, merger, validator)
+  TerraformApi.Application/   # Business logic (parser, generator, merger, validator, transformer)
   TerraformApi.Api/           # Minimal API endpoints + static frontend (wwwroot)
   TerraformApi.Mcp/           # MCP server for AI assistant integration (stdio transport)
 tests/
-  TerraformApi.Application.Tests/   # Unit tests for Application services (129 tests)
-  TerraformApi.Api.Tests/           # Integration tests for API endpoints (28 tests)
-  TerraformApi.Mcp.Tests/           # Unit tests for MCP server tools (41 tests)
+  TerraformApi.Application.Tests/   # Unit tests for Application services (173 tests)
+  TerraformApi.Api.Tests/           # Integration tests for API endpoints (34 tests)
+  TerraformApi.Mcp.Tests/           # Unit tests for MCP server tools (67 tests)
 ```
 
 ## Features
@@ -31,8 +31,10 @@ tests/
   - Display name: 1–300 chars, no `* # & + : < > ?`
   - API path: 0–400 chars, alphanumeric + hyphens + dots + slashes
   - Resource group: 1–90 chars, alphanumeric + hyphens + underscores + dots + parentheses
+- **Fetch operations** from any OpenAPI/Swagger URL — returns methods, paths, parameters, tags
+- **Cross-environment transform** — sync Terraform configs between dev/staging/prod, matching operations by URL+method
 - Web UI with drag-and-drop file upload, no Node.js required
-- **MCP server** for AI assistant integration (Claude Code, Claude Desktop)
+- **MCP server** with 6 tools for AI assistant integration (VS Code, Claude Code, Claude Desktop)
 - Docker-ready for cloud deployment
 
 ## Prerequisites
@@ -67,16 +69,16 @@ ASPNETCORE_ENVIRONMENT=Development dotnet run --project src/TerraformApi.Api
 ### Running Tests
 
 ```bash
-# Run all tests (198 total: Application + API + MCP)
+# Run all tests (274 total: Application + API + MCP)
 dotnet test
 
-# Run only Application (unit) tests — 129 tests
+# Run only Application (unit) tests — 173 tests
 dotnet test tests/TerraformApi.Application.Tests
 
-# Run only API (integration) tests — 28 tests
+# Run only API (integration) tests — 34 tests
 dotnet test tests/TerraformApi.Api.Tests
 
-# Run only MCP server (unit) tests — 41 tests
+# Run only MCP server (unit) tests — 67 tests
 dotnet test tests/TerraformApi.Mcp.Tests
 
 # With detailed output
@@ -475,24 +477,27 @@ The MCP server (`src/TerraformApi.Mcp`) is a .NET console app that communicates 
 
 ```
 src/TerraformApi.Mcp/
-  Program.cs              # Host setup with stdio transport
+  Program.cs                      # Host setup with stdio transport + HttpClient DI
   Tools/
-    ConvertTool.cs        # convert_openapi_to_terraform
-    UpdateTool.cs         # update_terraform_from_openapi
-    ValidateTool.cs       # validate_openapi_for_apim
-    EnvironmentsTool.cs   # list_environment_presets
-  appsettings.json        # Environment presets (same as API project)
-  mcp-config.json         # Example config for Claude Desktop / Claude Code
+    ConvertTool.cs                # convert_openapi_to_terraform
+    UpdateTool.cs                 # update_terraform_from_openapi
+    ValidateTool.cs               # validate_openapi_for_apim
+    EnvironmentsTool.cs           # list_environment_presets
+    TransformEnvironmentTool.cs   # transform_environment
+    FetchOperationsTool.cs        # fetch_openapi_operations
+  appsettings.json                # Environment presets (same as API project)
 ```
 
 ### Available Tools
 
 | Tool | Description |
 |---|---|
+| `fetch_openapi_operations` | Fetches an OpenAPI spec from a URL and returns a structured list of all operations (methods, paths, parameters, tags) |
 | `convert_openapi_to_terraform` | Converts an OpenAPI JSON spec into a full APIM Terraform HCL block |
 | `update_terraform_from_openapi` | Merges a new OpenAPI spec into existing Terraform, preserving custom operations |
 | `validate_openapi_for_apim` | Validates an OpenAPI spec against APIM naming rules (no Terraform output) |
 | `list_environment_presets` | Lists configured APIM environment presets (resource groups, hosts, etc.) |
+| `transform_environment` | Transforms Terraform from one APIM environment to another, with optional merge/sync against existing target |
 
 ### Tool Parameters
 
@@ -529,6 +534,30 @@ Same required parameters as `convert_openapi_to_terraform`, plus:
 | `openApiJson` | Yes | OpenAPI 3.x JSON string to validate |
 | `environment` | No | Environment name for operation ID generation (default: `"dev"`) |
 
+#### `fetch_openapi_operations`
+
+| Parameter | Required | Description | Example |
+|---|---|---|---|
+| `openApiUrl` | Yes | URL to an OpenAPI/Swagger JSON endpoint | `"https://api.example.com/swagger/v1/swagger.json"` |
+
+Returns a JSON object with `api` info (title, version, description, sourceUrl), `totalOperations` count, and an `operations` array. Each operation contains: `method`, `urlTemplate`, `path`, `operationId`, `description`, `tags[]`, `parameters[]` (name, in, type, required), `requestBodyContentTypes[]`, and `responseCodes[]`.
+
+#### `transform_environment`
+
+**Required parameters:**
+
+| Parameter | Description | Example |
+|---|---|---|
+| `sourceTerraform` | Source environment's Terraform HCL | The dev config text |
+| `targetEnvironment` | Target environment name | `"staging"`, `"prod"` |
+| `targetStageGroupName` | Target resource group | `"rg-apim-staging"` |
+| `targetApimName` | Target APIM instance | `"apim-company-staging"` |
+| `targetApiGatewayHost` | Target gateway hostname | `"api-staging.company.com"` |
+
+**Optional parameters:** `sourceEnvironment` (auto-detected if omitted), `existingTargetTerraform` (for merge/sync), `targetFrontendHost`, `targetCompanyDomain`, `targetLocalDevHost`, `targetLocalDevPort`, `targetSubscriptionRequired`
+
+When `existingTargetTerraform` is provided, operations are matched by **url_template + HTTP method** (not by operation_id, since IDs differ between environments). Source operations are synced, target-only operations are preserved.
+
 #### `list_environment_presets`
 
 | Parameter | Required | Description |
@@ -543,6 +572,35 @@ dotnet run --project src/TerraformApi.Mcp
 ```
 
 The server communicates over stdio (stdin/stdout) using [JSON-RPC 2.0](https://www.jsonrpc.org/specification) per the [MCP specification](https://modelcontextprotocol.io/). It is not meant to be used interactively — connect it to an MCP-compatible client.
+
+### Adding to VS Code (Copilot / Claude Extension)
+
+The repository includes a `.vscode/mcp.json` that registers the MCP server automatically when you open the workspace:
+
+```json
+{
+  "servers": {
+    "terraform-api": {
+      "type": "stdio",
+      "command": "dotnet",
+      "args": [
+        "run",
+        "--project",
+        "${workspaceFolder}/src/TerraformApi.Mcp/TerraformApi.Mcp.csproj",
+        "--no-launch-profile"
+      ]
+    }
+  }
+}
+```
+
+**Steps:**
+1. Open this repository in VS Code
+2. Install a MCP-compatible extension (e.g. [Claude for VS Code](https://marketplace.visualstudio.com/items?itemName=anthropic.claude-code), GitHub Copilot with MCP support)
+3. The server is auto-discovered from `.vscode/mcp.json` — no manual config needed
+4. All 6 tools appear in the extension's tool list
+
+> **Tip:** For faster startup, use a published binary instead of `dotnet run` (see "Published Binary" below).
 
 ### Adding to Claude Code
 
@@ -594,22 +652,67 @@ Then reference the binary directly in your MCP config:
 }
 ```
 
+### Testing the MCP Server
+
+#### 1. Unit Tests (recommended first step)
+
+```bash
+# Run all 67 MCP tool tests
+dotnet test tests/TerraformApi.Mcp.Tests
+```
+
+Tests call tool methods directly with real Application services — no mocking of business logic, only HTTP is mocked where needed.
+
+#### 2. MCP Inspector (interactive browser UI)
+
+The [MCP Inspector](https://modelcontextprotocol.io/docs/tools/inspector) provides a web-based UI to explore and call MCP tools:
+
+```bash
+npx @modelcontextprotocol/inspector dotnet run --project src/TerraformApi.Mcp/TerraformApi.Mcp.csproj
+```
+
+This opens a browser window where you can:
+- See all 6 tools listed with their parameters
+- Call any tool with custom inputs and see the response
+- Verify JSON-RPC communication works end-to-end
+
+#### 3. Manual stdio testing
+
+Pipe JSON-RPC messages directly to the server process:
+
+```bash
+# Initialize the server and list tools
+echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}
+{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' | dotnet run --project src/TerraformApi.Mcp
+```
+
+Expected: two JSON-RPC responses on stdout — an `initialize` result and a `tools/list` result containing all 6 tools.
+
+#### 4. VS Code integration test
+
+1. Open the repository in VS Code
+2. Verify the MCP server starts (check the extension's MCP status)
+3. Ask the AI to `"List the APIM environment presets"` — it should invoke `list_environment_presets`
+4. Ask `"Fetch the operations from https://petstore3.swagger.io/api/v3/openapi.json"` — it should invoke `fetch_openapi_operations`
+
 ### Customising Environment Presets
 
 Edit `src/TerraformApi.Mcp/appsettings.json` to configure environment presets. The `list_environment_presets` tool reads from this file to provide auto-fill values.
 
 ### MCP Server Tests
 
-The MCP tools are tested independently from the MCP transport layer. Tests call the tool methods directly with real Application services (no mocking):
+The MCP tools are tested independently from the MCP transport layer. Tests call the tool methods directly with real Application services (no mocking of business logic):
 
 ```bash
 dotnet test tests/TerraformApi.Mcp.Tests
 ```
 
-41 tests cover:
+67 tests cover:
+- **FetchOperationsTool** (18 tests): spec parsing, URL validation, HTTP mocking, parameters, tags, request bodies, response codes, error handling
 - **ConvertTool** (11 tests): valid conversion, error handling, CORS, products, custom names, multi-environment
 - **UpdateTool** (6 tests): merge operations, add operations, error handling, CORS in updates
 - **ValidateTool** (11 tests): valid specs, invalid JSON, operation detection, environment suffixes, fallback IDs
+- **TransformEnvironmentTool** (8 tests): dev→staging, merge/sync, subscription override, error cases, preserved operations
 - **EnvironmentsTool** (13 tests): list all, specific lookup, missing configs, field formatting, error handling
 
 ---

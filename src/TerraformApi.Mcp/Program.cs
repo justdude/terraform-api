@@ -14,6 +14,7 @@ builder.Logging.AddConsole(options =>
 });
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
 
+builder.Services.AddHttpClient();
 builder.Services.AddApplicationServices();
 
 builder.Services

@@ -268,6 +268,33 @@ public class EnvironmentTransformerServiceTests
     }
 
     [Fact]
+    public void ExtractOperationBlocks_BracesInsideQuotedStrings_IgnoredCorrectly()
+    {
+        // Braces inside JSON policy strings should not affect block boundary detection
+        var terraform = """
+            api_operations = [
+              {
+                  operation_id = "get-users-dev"
+                  method       = "GET"
+                  url_template = "users"
+                  description  = "Returns {\"items\": []}"
+              },
+              {
+                  operation_id = "create-user-dev"
+                  method       = "POST"
+                  url_template = "users"
+              },
+            ]
+            """;
+
+        var blocks = EnvironmentTransformerService.ExtractOperationBlocks(terraform);
+
+        Assert.Equal(2, blocks.Count);
+        Assert.Contains("get-users-dev", blocks[0]);
+        Assert.Contains("create-user-dev", blocks[1]);
+    }
+
+    [Fact]
     public void ExtractOperationsByRoute_ReturnsCorrectKeys()
     {
         var terraform = BuildTerraform("dev", "rg-apim-dev", "apim-company-dev", "api-dev.company.com",
@@ -512,6 +539,15 @@ public class EnvironmentTransformerServiceTests
     }
 
     // ── Error Handling ───────────────────────────────────────────────
+
+    [Fact]
+    public void Transform_NullSource_ReturnsFailure()
+    {
+        var result = _transformer.Transform(null!, StagingSettings);
+
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e => e.Contains("required"));
+    }
 
     [Fact]
     public void Transform_EmptySource_ReturnsFailure()

@@ -16,7 +16,7 @@ namespace TerraformApi.Application.Services;
 /// 4. If an existing target Terraform is provided, merge: match operations by
 ///    url_template + HTTP method, sync from source, preserve target-only operations.
 /// </summary>
-public sealed partial class EnvironmentTransformerService : IEnvironmentTransformer
+public sealed class EnvironmentTransformerService : IEnvironmentTransformer
 {
     /// <summary>
     /// Known environment name tokens used for auto-detection, ordered by specificity.
@@ -245,8 +245,16 @@ public sealed partial class EnvironmentTransformerService : IEnvironmentTransfor
             {
                 currentBlock.AppendLine(line);
 
-                foreach (var ch in trimmed)
+                var inQuote = false;
+                for (var ci = 0; ci < trimmed.Length; ci++)
                 {
+                    var ch = trimmed[ci];
+                    if (ch == '"' && (ci == 0 || trimmed[ci - 1] != '\\'))
+                    {
+                        inQuote = !inQuote;
+                        continue;
+                    }
+                    if (inQuote) continue;
                     if (ch == '{') braceDepth++;
                     else if (ch == '}') braceDepth--;
                 }
@@ -387,16 +395,16 @@ public sealed partial class EnvironmentTransformerService : IEnvironmentTransfor
 
         var sb = new StringBuilder();
         for (var i = 0; i < insertIndex; i++)
-            sb.AppendLine(lines[i]);
+            sb.Append(lines[i]).Append('\n');
 
         // Insert preserved operations (they carry their original indentation)
         foreach (var block in preservedBlocks)
-            sb.AppendLine(block);
+            sb.Append(block).Append('\n');
 
         for (var i = insertIndex; i < lines.Count; i++)
         {
             if (i < lines.Count - 1)
-                sb.AppendLine(lines[i]);
+                sb.Append(lines[i]).Append('\n');
             else
                 sb.Append(lines[i]);
         }
