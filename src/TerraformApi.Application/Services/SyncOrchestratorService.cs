@@ -21,6 +21,7 @@ public sealed class SyncOrchestratorService : ISyncOrchestrator
     private readonly IApimTemplateProfileDetector _profileDetector;
     private readonly IDuplicateDetector _duplicateDetector;
     private readonly IApimTemplateProfileApplier _profileApplier;
+    private readonly IOperationExecutionGraphBuilder _graphBuilder;
 
     public SyncOrchestratorService(
         IOpenApiParser openApiParser,
@@ -30,7 +31,8 @@ public sealed class SyncOrchestratorService : ISyncOrchestrator
         IAppendOnlySynchronizer synchronizer,
         IApimTemplateProfileDetector profileDetector,
         IDuplicateDetector duplicateDetector,
-        IApimTemplateProfileApplier profileApplier)
+        IApimTemplateProfileApplier profileApplier,
+        IOperationExecutionGraphBuilder graphBuilder)
     {
         _openApiParser = openApiParser;
         _reader = reader;
@@ -40,6 +42,7 @@ public sealed class SyncOrchestratorService : ISyncOrchestrator
         _profileDetector = profileDetector;
         _duplicateDetector = duplicateDetector;
         _profileApplier = profileApplier;
+        _graphBuilder = graphBuilder;
     }
 
     /// <inheritdoc />
@@ -72,12 +75,18 @@ public sealed class SyncOrchestratorService : ISyncOrchestrator
                 parsed = _reader.Read(parseResult.Document!);
             }
 
-            return _synchronizer.Synchronize(
+            var result = _synchronizer.Synchronize(
                 parsed,
                 configuration,
                 request.MergePolicy ?? new MergePolicy(),
                 request.MatchStrategy ?? new OperationMatchStrategy(),
                 request.Options);
+
+            if (!result.Success)
+                return result;
+
+            var graph = _graphBuilder.BuildFromSyncReport(result.Report, configuration.ApiGroupName);
+            return result with { ExecutionGraph = graph };
         }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
         {

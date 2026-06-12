@@ -95,7 +95,8 @@ public class AnalyzeToolTests
             openApiParser, reader, writer, hclParser, synchronizer,
             new ApimTemplateProfileDetectorService(),
             new DuplicateDetectorService(),
-            new ApimTemplateProfileApplierService(resolver));
+            new ApimTemplateProfileApplierService(resolver),
+            new OperationExecutionGraphBuilderService());
     }
 
     [Fact]

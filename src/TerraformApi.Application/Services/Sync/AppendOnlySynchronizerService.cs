@@ -220,6 +220,8 @@ public sealed class AppendOnlySynchronizerService : IAppendOnlySynchronizer
 
             foreach (var skip in skipped)
             {
+                _logger.LogInformation("Skipped field {Field} on operation {OperationId} due to policy",
+                    skip, tfFp.OperationId);
                 warnings.Add(new SyncWarning
                 {
                     Message = $"Skipped '{skip}' due to policy on operation '{tfFp.OperationId}'",

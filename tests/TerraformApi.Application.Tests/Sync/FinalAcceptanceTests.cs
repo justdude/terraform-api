@@ -41,7 +41,8 @@ public class FinalAcceptanceTests
             openApiParser, _reader, writer, _hclParser, synchronizer,
             new ApimTemplateProfileDetectorService(),
             new DuplicateDetectorService(),
-            new ApimTemplateProfileApplierService(resolver));
+            new ApimTemplateProfileApplierService(resolver),
+            new OperationExecutionGraphBuilderService());
     }
 
     private static string LoadFixture() =>

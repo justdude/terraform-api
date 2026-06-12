@@ -43,7 +43,8 @@ public class SyncOrchestratorServiceTests
             synchronizer,
             new ApimTemplateProfileDetectorService(),
             new DuplicateDetectorService(),
-            new ApimTemplateProfileApplierService(resolver));
+            new ApimTemplateProfileApplierService(resolver),
+            new OperationExecutionGraphBuilderService());
     }
 
     private static string LoadFixture() =>

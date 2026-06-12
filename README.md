@@ -610,6 +610,43 @@ When `existingTargetTerraform` is provided, operations are matched by **url_temp
 |---|---|---|
 | `environmentName` | No | Specific environment to retrieve. Omit to list all. |
 
+#### `sync_openapi_with_terraform`
+
+**Required parameters:** `existingTerraform` (empty string → generate from scratch), `environment`, `apiGroupName`, `stageGroupName`, `apimName`, `apiPathPrefix`, `apiPathSuffix`, `apiGatewayHost`, `backendServicePath`, and one of `openApiJson` / `openApiUrl`.
+
+**Optional parameters:**
+
+| Parameter | Default | Description |
+|---|---|---|
+| `templateProfileName` | `"Auto"` | Style for new operations: `Auto` (detect from file), `UserExampleProfile`, `ExtendedProfile`, `LiteralProfile` |
+| `operationFieldOverridesJson` | — | Per-field policy, e.g. `{"description":"Overwrite"}` (`Preserve` / `EnrichIfMissing` / `Overwrite`) |
+| `matchKeysJson` | `["MethodAndUrl","OperationId","Tag"]` | Match key order |
+| `variableContextJson` | — | Variables for resolved-mode matching, e.g. `{"env":"dev"}` |
+| `addOperationComments` | `true` | Comment block above each inserted operation |
+| `addReplaceBeforeApplyHeader` | `true` | Placeholder header before `api_operations` |
+
+Returns JSON: `{ success, terraformConfig, report { operationsAdded, operationsPreserved, operationsEnriched, operationsIdentical, diffs, duplicates, warnings }, executionGraph { nodes, statistics } }`.
+
+#### `analyze_terraform_apim`
+
+| Parameter | Required | Description |
+|---|---|---|
+| `existingTerraform` | Yes | The Terraform HCL to analyze (read-only) |
+
+Returns JSON: `{ success, apiGroups [{ apimResourceGroupName, apiName, operationCount }], totalOperations, detectedProfile { confidence, closestKnownProfileName, detectedFields, allReferencedVariables }, duplicates }`.
+
+#### `apply_template_profile`
+
+| Parameter | Required | Description |
+|---|---|---|
+| `existingTerraform` | Yes | The Terraform HCL to convert |
+| `direction` | Yes | `Templatize` (literals → `${...}`) or `Resolve` (`${...}` → literals) |
+| `profileName` | Templatize only | `UserExampleProfile` / `ExtendedProfile` / `LiteralProfile` |
+| `variableContextJson` | Resolve only | Variable values, e.g. `{"env":"dev","apim_name":"apim-company-dev"}` |
+| `overwriteExisting` | No (`false`) | Replace literals that already have values (Templatize) |
+
+Returns JSON: `{ success, terraformConfig, appliedChanges, warnings }`.
+
 ### Running Standalone
 
 ```bash

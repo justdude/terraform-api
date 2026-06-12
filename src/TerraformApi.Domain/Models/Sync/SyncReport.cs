@@ -142,5 +142,9 @@ public sealed record SyncResult
     public required string TerraformConfig { get; init; }
 
     public required SyncReport Report { get; init; }
+
+    /// <summary>Per-operation status graph built from the report.</summary>
+    public Tracking.OperationExecutionGraph? ExecutionGraph { get; init; }
+
     public List<string> Errors { get; init; } = [];
 }

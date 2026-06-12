@@ -30,6 +30,7 @@ public static class DependencyInjection
         services.AddSingleton<IDuplicateDetector, Services.Sync.DuplicateDetectorService>();
         services.AddSingleton<IAppendOnlySynchronizer, Services.Sync.AppendOnlySynchronizerService>();
         services.AddSingleton<IApimTemplateProfileApplier, Services.Sync.ApimTemplateProfileApplierService>();
+        services.AddSingleton<IOperationExecutionGraphBuilder, Services.Sync.OperationExecutionGraphBuilderService>();
         services.AddSingleton<ISyncOrchestrator, SyncOrchestratorService>();
 
         return services;
