@@ -403,7 +403,7 @@ public sealed class AppendOnlySynchronizerService : IAppendOnlySynchronizer
         var groupAssignment = new HclAssignment
         {
             Key = config.ApiGroupName,
-            KeyIsQuoted = config.ApiGroupName.Contains("${"),
+            KeyIsQuoted = ApimTerraformWriterService.NeedsQuotedKey(config.ApiGroupName),
             Value = groupObject
         };
 

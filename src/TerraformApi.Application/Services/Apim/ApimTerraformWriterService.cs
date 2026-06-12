@@ -60,7 +60,7 @@ public sealed class ApimTerraformWriterService : IApimTerraformWriter
         var groupAssignment = new HclAssignment
         {
             Key = configuration.ApiGroupName,
-            KeyIsQuoted = configuration.ApiGroupName.Contains("${"),
+            KeyIsQuoted = NeedsQuotedKey(configuration.ApiGroupName),
             Value = groupObject
         };
 
@@ -366,6 +366,14 @@ public sealed class ApimTerraformWriterService : IApimTerraformWriter
             array.Items.Add(new HclArrayItem { Value = Str(value) });
         return array;
     }
+
+    /// <summary>
+    /// True when the key must be quoted to stay valid HCL: anything that is not
+    /// a plain identifier — interpolations (${...}), placeholder tags ({...}),
+    /// dots, spaces, etc. An unquoted "{api-group}" would be unparseable.
+    /// </summary>
+    internal static bool NeedsQuotedKey(string key) =>
+        !System.Text.RegularExpressions.Regex.IsMatch(key, "^[A-Za-z_][A-Za-z0-9_-]*$");
 
     /// <summary>Replaces {op} in a template with the kebab-cased operation id.</summary>
     internal static string ApplyOpSubstitution(string template, string kebabOperationId) =>

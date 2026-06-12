@@ -218,6 +218,31 @@ public class ApimTerraformWriterServiceTests
     }
 
     [Theory]
+    [InlineData("plain-name", false)]
+    [InlineData("plain_name2", false)]
+    [InlineData("${api_group_name}", true)]
+    [InlineData("{api-group}", true)]
+    [InlineData("has space", true)]
+    [InlineData("dotted.name", true)]
+    public void NeedsQuotedKey_QuotesNonIdentifiers(string key, bool expected)
+    {
+        Assert.Equal(expected, ApimTerraformWriterService.NeedsQuotedKey(key));
+    }
+
+    [Fact]
+    public void BuildFromConfiguration_PlaceholderGroupName_QuotedAndParseable()
+    {
+        var config = SampleConfiguration() with { ApiGroupName = "{api-group}" };
+        var parsed = _writer.BuildFromConfiguration(config, new BuildOptions());
+        var hcl = _writer.Write(parsed);
+
+        Assert.Contains("\"{api-group}\"", hcl);
+
+        var reparsed = _parser.Parse(hcl);
+        Assert.NotNull(reparsed);
+    }
+
+    [Theory]
     [InlineData("listUserById", "list-user-by-id")]
     [InlineData("getUsers", "get-users")]
     [InlineData("already-kebab", "already-kebab")]

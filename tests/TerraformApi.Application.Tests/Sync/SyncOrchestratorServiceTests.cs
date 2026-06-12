@@ -139,6 +139,30 @@ public class SyncOrchestratorServiceTests
     }
 
     [Fact]
+    public void Sync_FromScratchWithNoSettings_ProducesParseableHclWithQuotedTagKey()
+    {
+        // All settings missing → placeholder tags. The {api-group} group key is
+        // not a valid HCL identifier and MUST be quoted, or the output would be
+        // unparseable by our own parser (and Terraform).
+        var result = _orchestrator.Sync(new SyncRequest
+        {
+            OpenApiJson = OpenApi,
+            ExistingTerraform = null,
+            Settings = new ConversionSettings()
+        });
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+        Assert.Contains("\"{api-group}\"", result.TerraformConfig);
+
+        // The output must round-trip through our own parser.
+        var reparsed = _hclParser.Parse(result.TerraformConfig);
+        Assert.NotNull(reparsed);
+
+        // Defaulted tags surface as warnings.
+        Assert.Contains(result.Report.Warnings, w => w.Message.Contains("{api-group}"));
+    }
+
+    [Fact]
     public void Sync_InvalidExistingHcl_FailsWithDiagnostics()
     {
         var result = _orchestrator.Sync(new SyncRequest

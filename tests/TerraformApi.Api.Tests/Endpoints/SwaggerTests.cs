@@ -47,7 +47,8 @@ public class SwaggerTests : IClassFixture<WebApplicationFactory<Program>>
             "/api/convert", "/api/convert/update", "/api/transform-environment",
             "/api/fetch-operations", "/api/parse-terraform-operations", "/api/validate",
             "/api/environments", "/api/health",
-            "/api/sync", "/api/analyze-terraform", "/api/apply-template-profile"
+            "/api/sync", "/api/analyze-terraform", "/api/apply-template-profile",
+            "/api/generate-product"
         ];
         foreach (var path in expected)
             Assert.Contains(path, paths);

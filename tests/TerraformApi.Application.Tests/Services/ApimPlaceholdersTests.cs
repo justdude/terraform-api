@@ -155,6 +155,24 @@ public class ApimPlaceholdersTests
     }
 
     [Fact]
+    public void Update_NoSettingsProvided_SucceedsAndWarns()
+    {
+        var orchestrator = BuildOrchestrator();
+        var initial = orchestrator.Convert(MinimalOpenApi, new ConversionSettings());
+        Assert.True(initial.Success);
+
+        // Strip the tag header so the merger sees plain HCL-ish text.
+        var existing = string.Join("\n",
+            initial.TerraformConfig.Split('\n').Where(l => !l.TrimStart().StartsWith('#')));
+
+        var result = orchestrator.Update(MinimalOpenApi, existing, new ConversionSettings());
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+        Assert.Contains("{api-group}", result.TerraformConfig);
+        Assert.Contains(result.Warnings, w => w.Contains("placeholder tag"));
+    }
+
+    [Fact]
     public void BuildHeaderComment_EmptyTags_EmptyString()
     {
         Assert.Equal("", ApimPlaceholders.BuildHeaderComment([]));
