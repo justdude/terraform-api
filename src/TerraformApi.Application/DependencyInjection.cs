@@ -24,6 +24,8 @@ public static class DependencyInjection
         services.AddSingleton<IApimTerraformReader, Services.Apim.ApimTerraformReaderService>();
         services.AddSingleton<IApimTerraformWriter, Services.Apim.ApimTerraformWriterService>();
         services.AddSingleton<IOperationCommentBuilder, Services.Sync.OperationCommentBuilderService>();
+        services.AddSingleton<Services.Sync.TerraformInterpolationResolver>();
+        services.AddSingleton<IApimTemplateProfileDetector, Services.Sync.ApimTemplateProfileDetectorService>();
 
         return services;
     }
