@@ -1,7 +1,7 @@
 using System.ComponentModel;
 using System.Text;
-using Microsoft.OpenApi.Readers;
 using ModelContextProtocol.Server;
+using TerraformApi.Application.Services.OpenApi;
 using TerraformApi.Domain.Interfaces;
 
 namespace TerraformApi.Mcp.Tools;
@@ -33,13 +33,11 @@ public static class ValidateTool
         {
             var resolvedJson = await ConvertTool.ResolveOpenApiJson(httpClient, openApiJson, openApiUrl, cancellationToken);
 
-            var reader = new OpenApiStringReader();
-            var doc = reader.Read(resolvedJson, out var diagnostic);
-
-            if (diagnostic.Errors.Count > 0)
-            {
-                errors.AddRange(diagnostic.Errors.Select(e => e.Message));
-            }
+            // Centralized reader — the only Microsoft.OpenApi.Readers call site
+            // lives in OpenApiDocumentReader.
+            var read = OpenApiDocumentReader.Read(resolvedJson);
+            var doc = read.Document;
+            errors.AddRange(read.Errors);
 
             if (doc?.Paths == null)
             {

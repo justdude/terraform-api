@@ -1,4 +1,5 @@
 using TerraformApi.Application.Services;
+using TerraformApi.Application.Services.OpenApi;
 using TerraformApi.Domain.Models;
 
 namespace TerraformApi.Application.Tests.Services;
@@ -28,7 +29,7 @@ public class ApimPlaceholdersTests
     private static ConversionOrchestratorService BuildOrchestrator()
     {
         var validator = new ApimNamingValidatorService();
-        var parser = new OpenApiParserService(validator);
+        var parser = new OpenApiFacadeService(validator);
         var generator = new TerraformGeneratorService();
         var merger = new TerraformMergerService(generator);
         return new ConversionOrchestratorService(parser, generator, merger, validator);

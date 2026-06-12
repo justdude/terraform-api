@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
-using Microsoft.OpenApi.Readers;
 using TerraformApi.Api.Dtos;
 using TerraformApi.Application.Services;
+using TerraformApi.Application.Services.OpenApi;
 using TerraformApi.Domain.Interfaces;
 using TerraformApi.Domain.Models;
 
@@ -215,12 +215,14 @@ public sealed class ConversionController : ControllerBase
                 });
             }
 
-            var reader = new OpenApiStringReader();
-            var doc = reader.Read(openApiJson, out var diagnostic);
+            // Centralized reader — the only Microsoft.OpenApi.Readers call site
+            // lives in OpenApiDocumentReader (Application layer).
+            var read = OpenApiDocumentReader.Read(openApiJson);
+            var doc = read.Document;
 
-            if (diagnostic.Errors.Count > 0)
+            if (read.Errors.Count > 0)
             {
-                errors.AddRange(diagnostic.Errors.Select(e => e.Message));
+                errors.AddRange(read.Errors);
                 // Fatal parse errors (e.g. completely invalid JSON) result in no
                 // usable document, so return 400 immediately rather than 200+IsValid=false.
                 if (doc?.Paths == null)

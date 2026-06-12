@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using TerraformApi.Application.Services;
+using TerraformApi.Application.Services.OpenApi;
 using TerraformApi.Application.Services.Apim;
 using TerraformApi.Application.Services.Hcl;
 using TerraformApi.Application.Services.Sync;
@@ -75,7 +76,7 @@ public class AnalyzeToolTests
     internal static ISyncOrchestrator BuildOrchestrator()
     {
         var validator = new ApimNamingValidatorService();
-        var openApiParser = new OpenApiParserService(validator);
+        var openApiParser = new OpenApiFacadeService(validator);
         var hclParser = new HclParserService();
         var reader = new ApimTerraformReaderService(hclParser);
         var hclWriter = new HclWriterService();

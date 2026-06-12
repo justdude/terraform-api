@@ -1,5 +1,6 @@
 using System.Text.Json;
 using TerraformApi.Application.Services;
+using TerraformApi.Application.Services.OpenApi;
 using TerraformApi.Mcp.Tools;
 
 namespace TerraformApi.Mcp.Tests.Tools;
@@ -296,7 +297,7 @@ public class ParseTerraformOperationsToolTests
     public void ParseOperationsCore_OutputKeysMatchFetchOperationsExactly()
     {
         // Parse equivalent data through both tools and verify JSON key sets are identical
-        var openApiFetcher = new OpenApiOperationsFetcherService();
+        var openApiFetcher = new OpenApiFacadeService(new ApimNamingValidatorService());
         var openApiSpec = """
             {
               "openapi": "3.0.1",

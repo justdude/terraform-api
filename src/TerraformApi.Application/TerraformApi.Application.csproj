@@ -20,4 +20,20 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <!-- NuGet package: the full conversion/sync engine, consumable without any
+       host. Entry points: TerraformApiFacade.Create() for plain library use,
+       or AddApplicationServices() for DI hosts. -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>TerraformApi.Application</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>terraform-api</Authors>
+    <Description>Converts OpenAPI specifications into Azure APIM Terraform configurations: generation with placeholder tags, append-only sync with style detection, analysis, template profiles, environment transform and product generation. Use TerraformApiFacade.Create() as the single entry point, or AddApplicationServices() with dependency injection.</Description>
+    <PackageTags>openapi;terraform;apim;azure;hcl;converter;sync</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryType>git</RepositoryType>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
+  </PropertyGroup>
+
 </Project>

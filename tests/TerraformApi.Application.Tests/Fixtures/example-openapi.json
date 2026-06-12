@@ -1,0 +1,191 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Order Management API",
+    "version": "2.1.0",
+    "description": "Example API with complex request/response types for integration testing."
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "Address": {
+        "type": "object",
+        "required": ["street", "city", "country"],
+        "properties": {
+          "street": { "type": "string" },
+          "city": { "type": "string" },
+          "postalCode": { "type": "string" },
+          "country": { "type": "string", "minLength": 2, "maxLength": 2 }
+        }
+      },
+      "Customer": {
+        "type": "object",
+        "required": ["email", "name"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "billingAddress": { "$ref": "#/components/schemas/Address" },
+          "shippingAddresses": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Address" }
+          }
+        }
+      },
+      "OrderItem": {
+        "type": "object",
+        "required": ["sku", "quantity"],
+        "properties": {
+          "sku": { "type": "string" },
+          "quantity": { "type": "integer", "format": "int32", "minimum": 1 },
+          "unitPrice": { "type": "number", "format": "double" },
+          "attributes": {
+            "type": "object",
+            "additionalProperties": { "type": "string" }
+          }
+        }
+      },
+      "Order": {
+        "type": "object",
+        "required": ["customer", "items"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid", "readOnly": true },
+          "customer": { "$ref": "#/components/schemas/Customer" },
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "#/components/schemas/OrderItem" }
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "confirmed", "shipped", "delivered", "cancelled"]
+          },
+          "totalAmount": { "type": "number", "format": "double", "readOnly": true },
+          "createdAt": { "type": "string", "format": "date-time", "readOnly": true }
+        }
+      },
+      "ValidationProblem": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string" },
+          "errors": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/orders": {
+      "get": {
+        "operationId": "listOrders",
+        "summary": "List orders",
+        "tags": ["orders"],
+        "parameters": [
+          { "name": "status", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Filter by order status" },
+          { "name": "pageSize", "in": "query", "required": false, "schema": { "type": "integer", "format": "int32" } },
+          { "name": "X-Correlation-Id", "in": "header", "required": false, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of orders",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Order" } }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createOrder",
+        "summary": "Create an order",
+        "description": "Creates a new order with a complex nested payload.",
+        "tags": ["orders"],
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/Order" }
+            },
+            "application/xml": {
+              "schema": { "$ref": "#/components/schemas/Order" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Order created",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Order" } }
+            }
+          },
+          "400": {
+            "description": "Validation failure",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ValidationProblem" } }
+            }
+          }
+        }
+      }
+    },
+    "/orders/{orderId}": {
+      "parameters": [
+        { "name": "orderId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+      ],
+      "get": {
+        "operationId": "getOrderById",
+        "summary": "Get order by id",
+        "tags": ["orders"],
+        "responses": {
+          "200": {
+            "description": "The order",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Order" } }
+            }
+          },
+          "404": { "description": "Not found" }
+        }
+      },
+      "put": {
+        "operationId": "replaceOrder",
+        "summary": "Replace an order",
+        "tags": ["orders"],
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["items"],
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "items": { "$ref": "#/components/schemas/OrderItem" }
+                  },
+                  "note": { "type": "string", "maxLength": 500 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Replaced" },
+          "404": { "description": "Not found" }
+        }
+      }
+    }
+  }
+}

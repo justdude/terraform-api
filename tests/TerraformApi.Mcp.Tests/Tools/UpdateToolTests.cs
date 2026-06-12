@@ -1,4 +1,5 @@
 using TerraformApi.Application.Services;
+using TerraformApi.Application.Services.OpenApi;
 using TerraformApi.Domain.Interfaces;
 using TerraformApi.Mcp.Tools;
 
@@ -49,7 +50,7 @@ public class UpdateToolTests
     public UpdateToolTests()
     {
         var validator = new ApimNamingValidatorService();
-        var parser = new OpenApiParserService(validator);
+        var parser = new OpenApiFacadeService(validator);
         var generator = new TerraformGeneratorService();
         var merger = new TerraformMergerService(generator);
         _orchestrator = new ConversionOrchestratorService(parser, generator, merger, validator);
@@ -58,7 +59,7 @@ public class UpdateToolTests
     private async Task<string> GenerateInitialTerraform()
     {
         var validator = new ApimNamingValidatorService();
-        var openApiParser = new OpenApiParserService(validator);
+        var openApiParser = new OpenApiFacadeService(validator);
         var apimWriter = new Application.Services.Apim.ApimTerraformWriterService(
             new Application.Services.Hcl.HclWriterService(),
             new Application.Services.Apim.ApimTerraformReaderService(new Application.Services.Hcl.HclParserService()),

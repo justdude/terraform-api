@@ -1,4 +1,5 @@
 using TerraformApi.Application.Services;
+using TerraformApi.Application.Services.OpenApi;
 using TerraformApi.Application.Services.Apim;
 using TerraformApi.Application.Services.Hcl;
 using TerraformApi.Application.Services.Sync;
@@ -45,7 +46,7 @@ public class ConvertToolTests
     public ConvertToolTests()
     {
         var validator = new ApimNamingValidatorService();
-        var parser = new OpenApiParserService(validator);
+        var parser = new OpenApiFacadeService(validator);
         var generator = new TerraformGeneratorService();
         var merger = new TerraformMergerService(generator);
         _orchestrator = new ConversionOrchestratorService(parser, generator, merger, validator);

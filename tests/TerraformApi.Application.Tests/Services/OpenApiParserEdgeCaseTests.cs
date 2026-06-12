@@ -1,4 +1,5 @@
 using TerraformApi.Application.Services;
+using TerraformApi.Application.Services.OpenApi;
 using TerraformApi.Domain.Models;
 
 namespace TerraformApi.Application.Tests.Services;
@@ -9,7 +10,7 @@ namespace TerraformApi.Application.Tests.Services;
 /// </summary>
 public class OpenApiParserEdgeCaseTests
 {
-    private readonly OpenApiParserService _parser;
+    private readonly OpenApiFacadeService _parser;
     private readonly ApimNamingValidatorService _validator = new();
 
     private static readonly ConversionSettings DefaultSettings = new()
@@ -27,7 +28,7 @@ public class OpenApiParserEdgeCaseTests
 
     public OpenApiParserEdgeCaseTests()
     {
-        _parser = new OpenApiParserService(_validator);
+        _parser = new OpenApiFacadeService(_validator);
     }
 
     [Fact]

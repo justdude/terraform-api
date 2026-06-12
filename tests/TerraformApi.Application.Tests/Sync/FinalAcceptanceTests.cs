@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using TerraformApi.Application.Services;
+using TerraformApi.Application.Services.OpenApi;
 using TerraformApi.Application.Services.Apim;
 using TerraformApi.Application.Services.Hcl;
 using TerraformApi.Application.Services.Sync;
@@ -22,7 +23,7 @@ public class FinalAcceptanceTests
     public FinalAcceptanceTests()
     {
         var validator = new ApimNamingValidatorService();
-        var openApiParser = new OpenApiParserService(validator);
+        var openApiParser = new OpenApiFacadeService(validator);
         _reader = new ApimTerraformReaderService(_hclParser);
         var hclWriter = new HclWriterService();
         var commentBuilder = new OperationCommentBuilderService();

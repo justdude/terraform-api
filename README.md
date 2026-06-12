@@ -66,6 +66,27 @@ Both hosts resolve `openApiJson`/`openApiUrl` input through the same `OpenApiDoc
 
 See [docs/mcp-usage.md](docs/mcp-usage.md) for usage **with an MCP client**, **without MCP** (HTTP API), and **headless automation** — including running conversion automatically after a project build via `scripts/convert-after-build.ps1`.
 
+## Using the engine as a NuGet package
+
+The Application layer ships as a NuGet package (`dotnet pack src/TerraformApi.Application -c Release` → `TerraformApi.Application.1.0.0.nupkg` + its `TerraformApi.Domain` dependency). One facade covers the whole engine — no host, no DI required:
+
+```csharp
+using TerraformApi.Application;
+
+var facade = TerraformApiFacade.Create();
+
+// OpenAPI → Terraform (missing settings become {tag} placeholders):
+var conversion = facade.ConvertOpenApiToTerraform(openApiJson,
+    new ConversionSettings { Environment = "dev", ApiGroupName = "my-api-group" });
+
+// Append-only sync, analysis, products, listings:
+var sync     = facade.Sync(new SyncRequest { OpenApiJson = openApiJson, ExistingTerraform = hcl, Settings = new() });
+var analysis = facade.AnalyzeTerraform(hcl);
+var product  = facade.GenerateProduct(new ApimProductRequest { ProductId = "orders" });
+```
+
+DI hosts call `services.AddApplicationServices()` instead and inject either the individual interfaces or `TerraformApiFacade`. All OpenAPI parsing flows through a single facade service (`OpenApiFacadeService`, serving both `IOpenApiParser` and `IOpenApiOperationsFetcher` from one instance) with document reading centralized in `OpenApiDocumentReader` — the only `Microsoft.OpenApi.Readers` call site in the codebase.
+
 ## Placeholder tags for missing settings
 
 Every APIM setting (`environment`, `apiGroupName`, `stageGroupName`, `apimName`, `apiPathPrefix`, `apiPathSuffix`, `apiGatewayHost`, `backendServicePath`) is **optional** in both the API and the MCP tools. Anything you don't provide is generated with a replaceable tag, and the file starts with a comment explaining each one:

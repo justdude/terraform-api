@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.Json;
 using TerraformApi.Application.Services;
+using TerraformApi.Application.Services.OpenApi;
 using TerraformApi.Mcp.Tools;
 
 namespace TerraformApi.Mcp.Tests.Tools;
@@ -12,7 +13,7 @@ namespace TerraformApi.Mcp.Tests.Tools;
 /// </summary>
 public class FetchOperationsToolTests
 {
-    private readonly OpenApiOperationsFetcherService _fetcher = new();
+    private readonly OpenApiFacadeService _fetcher = new(new ApimNamingValidatorService());
 
     private const string ValidPetStoreSpec = """
         {

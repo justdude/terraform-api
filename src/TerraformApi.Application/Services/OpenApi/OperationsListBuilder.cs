@@ -1,58 +1,29 @@
 using Microsoft.OpenApi.Models;
-using Microsoft.OpenApi.Readers;
-using TerraformApi.Domain.Interfaces;
 using TerraformApi.Domain.Models;
 
-namespace TerraformApi.Application.Services;
+namespace TerraformApi.Application.Services.OpenApi;
 
 /// <summary>
-/// Parses an OpenAPI JSON specification and returns a structured operations list
-/// using the unified <see cref="OperationsListResult"/> format shared with the Terraform parser.
+/// Static helper that maps a parsed <see cref="OpenApiDocument"/> onto the
+/// unified <see cref="OperationsListResult"/> shared with the Terraform parser.
+/// Pure mapping — document reading lives in <see cref="OpenApiDocumentReader"/>.
 /// </summary>
-public sealed class OpenApiOperationsFetcherService : IOpenApiOperationsFetcher
+internal static class OperationsListBuilder
 {
-    /// <inheritdoc />
-    public OperationsListResult ParseOperations(string openApiJson, string sourceUrl = "inline")
+    public static OperationsListResult Build(OpenApiDocument document, string sourceUrl)
     {
-        OpenApiDocument doc;
-        OpenApiDiagnostic diagnostic;
-
-        try
-        {
-            var reader = new OpenApiStringReader();
-            doc = reader.Read(openApiJson, out diagnostic);
-        }
-        catch (Exception ex)
-        {
-            return new OperationsListResult
-            {
-                Success = false,
-                Error = $"Failed to parse OpenAPI document: {ex.Message}"
-            };
-        }
-
-        if (doc?.Paths == null || doc.Paths.Count == 0)
-        {
-            var errors = diagnostic?.Errors.Select(e => e.Message).ToList() ?? [];
-            var msg = errors.Count > 0
-                ? $"OpenAPI parse errors: {string.Join("; ", errors)}"
-                : "No API paths found in the OpenAPI document.";
-
-            return new OperationsListResult { Success = false, Error = msg };
-        }
-
         var apiInfo = new OperationsApiInfo
         {
-            Title = doc.Info?.Title ?? "Unknown",
-            Version = doc.Info?.Version ?? "Unknown",
-            Description = string.IsNullOrWhiteSpace(doc.Info?.Description) ? null : doc.Info!.Description,
+            Title = document.Info?.Title ?? "Unknown",
+            Version = document.Info?.Version ?? "Unknown",
+            Description = string.IsNullOrWhiteSpace(document.Info?.Description) ? null : document.Info!.Description,
             SourceUrl = sourceUrl,
             Source = "openapi"
         };
 
         var operations = new List<OperationInfo>();
 
-        foreach (var pathItem in doc.Paths)
+        foreach (var pathItem in document.Paths)
         {
             foreach (var operation in pathItem.Value.Operations)
             {

@@ -1,63 +1,31 @@
 using Microsoft.OpenApi.Models;
-using Microsoft.OpenApi.Readers;
 using TerraformApi.Domain.Interfaces;
 using TerraformApi.Domain.Models;
 
-namespace TerraformApi.Application.Services;
+namespace TerraformApi.Application.Services.OpenApi;
 
 /// <summary>
-/// Parses an OpenAPI 3.x JSON string into an <see cref="ApimConfiguration"/> that
-/// represents the Azure APIM resource structure required for Terraform generation.
+/// Static helper that maps a parsed <see cref="OpenApiDocument"/> onto the
+/// <see cref="ApimConfiguration"/> Terraform model: api block, one operation
+/// per path+method (headers, query parameters, request body representations,
+/// responses), optional CORS policy and product. Pure mapping — document
+/// reading lives in <see cref="OpenApiDocumentReader"/>.
 /// </summary>
-public sealed class OpenApiParserService : IOpenApiParser
+internal static class ApimConfigurationBuilder
 {
-    private readonly IApimNamingValidator _namingValidator;
-
-    public OpenApiParserService(IApimNamingValidator namingValidator)
-    {
-        _namingValidator = namingValidator;
-    }
-
     /// <summary>
-    /// Parses the supplied OpenAPI JSON and returns a fully-populated
-    /// <see cref="ApimConfiguration"/> with the API resource and one
-    /// <see cref="ApimApiOperation"/> per path+method combination found in the spec.
+    /// Builds the APIM configuration. <paramref name="settings"/> must already
+    /// be placeholder-normalized (see <see cref="ApimPlaceholders.Normalize"/>).
     /// </summary>
-    /// <param name="openApiJson">Raw OpenAPI 3.x JSON string.</param>
-    /// <param name="settings">Conversion settings that control naming, environment, and CORS.</param>
-    /// <returns>The parsed APIM configuration.</returns>
-    /// <exception cref="InvalidOperationException">
-    /// Thrown when the JSON cannot be parsed or contains fatal OpenAPI errors.
-    /// </exception>
-    public ApimConfiguration Parse(string openApiJson, ConversionSettings settings)
+    public static ApimConfiguration Build(
+        OpenApiDocument document,
+        ConversionSettings settings,
+        IApimNamingValidator namingValidator)
     {
-        OpenApiDocument openApiDoc;
-        OpenApiDiagnostic diagnostic;
-
-        try
-        {
-            var reader = new OpenApiStringReader();
-            openApiDoc = reader.Read(openApiJson, out diagnostic);
-        }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException($"Failed to parse OpenAPI document: {ex.Message}", ex);
-        }
-
-        if (diagnostic.Errors.Count > 0)
-        {
-            var errors = string.Join("; ", diagnostic.Errors.Select(e => e.Message));
-            throw new InvalidOperationException($"Failed to parse OpenAPI document: {errors}");
-        }
-
-        // Missing settings become placeholder tags ({environment}, {api-group}, â€¦)
-        // so generation never blocks. Idempotent when already normalized upstream.
-        (settings, _) = ApimPlaceholders.Normalize(settings);
-
-        var apiTitle = openApiDoc.Info?.Title ?? "Untitled API";
-        var apiName = settings.ApiName ?? _namingValidator.SanitizeApiName(apiTitle);
+        var apiTitle = document.Info?.Title ?? "Untitled API";
+        var apiName = settings.ApiName ?? namingValidator.SanitizeApiName(apiTitle);
         var apiDisplayName = settings.ApiDisplayName ?? apiTitle;
-        var operationPrefix = settings.OperationPrefix ?? _namingValidator.SanitizeApiName(apiTitle);
+        var operationPrefix = settings.OperationPrefix ?? namingValidator.SanitizeApiName(apiTitle);
         var env = settings.Environment!;
 
         var policy = settings.IncludeCorsPolicy
@@ -75,7 +43,7 @@ public sealed class OpenApiParserService : IOpenApiParser
             DisplayName = $"{apiDisplayName} - {env}",
             Path = ApimPlaceholders.ContainsPlaceholder(apiPath)
                 ? apiPath
-                : _namingValidator.SanitizeApiPath(apiPath),
+                : namingValidator.SanitizeApiPath(apiPath),
             ServiceUrl = serviceUrl,
             Protocols = ["https"],
             Revision = settings.Revision,
@@ -88,9 +56,9 @@ public sealed class OpenApiParserService : IOpenApiParser
 
         var operations = new List<ApimApiOperation>();
 
-        if (openApiDoc.Paths != null)
+        if (document.Paths != null)
         {
-            foreach (var pathItem in openApiDoc.Paths)
+            foreach (var pathItem in document.Paths)
             {
                 var urlTemplate = ConvertPathToTemplate(pathItem.Key);
 
@@ -102,16 +70,13 @@ public sealed class OpenApiParserService : IOpenApiParser
                     var opIdRaw = op.OperationId
                         ?? $"{method.ToLowerInvariant()}-{urlTemplate.Replace("/", "-").Replace("{", "").Replace("}", "").Trim('-')}";
 
-                    // Keep placeholder tags intact â€” the sanitizer would strip
+                    // Keep placeholder tags intact — the sanitizer would strip
                     // their braces. Only the spec-derived part is sanitized then.
                     var operationId = ApimPlaceholders.ContainsPlaceholder($"{operationPrefix}-{env}")
-                        ? $"{operationPrefix}-{_namingValidator.SanitizeOperationId(opIdRaw)}-{env}"
-                        : _namingValidator.SanitizeOperationId($"{operationPrefix}-{opIdRaw}-{env}");
-                    var displayName = op.Summary ?? op.OperationId ?? $"{method} {pathItem.Key}";
+                        ? $"{operationPrefix}-{namingValidator.SanitizeOperationId(opIdRaw)}-{env}"
+                        : namingValidator.SanitizeOperationId($"{operationPrefix}-{opIdRaw}-{env}");
 
-                    var requests = BuildRequests(op, pathItem.Value);
-                    var responses = BuildResponses(op);
-                    var primaryStatusCode = GetPrimarySuccessStatusCode(op);
+                    var displayName = op.Summary ?? op.OperationId ?? $"{method} {pathItem.Key}";
 
                     operations.Add(new ApimApiOperation
                     {
@@ -122,10 +87,10 @@ public sealed class OpenApiParserService : IOpenApiParser
                         DisplayName = displayName,
                         Method = method,
                         UrlTemplate = urlTemplate,
-                        StatusCode = primaryStatusCode,
+                        StatusCode = GetPrimarySuccessStatusCode(op),
                         Description = op.Description ?? "",
-                        Requests = requests,
-                        Responses = responses
+                        Requests = BuildRequests(op, pathItem.Value),
+                        Responses = BuildResponses(op)
                     });
                 }
             }
@@ -160,20 +125,21 @@ public sealed class OpenApiParserService : IOpenApiParser
 
     /// <summary>
     /// Strips the leading slash from an OpenAPI path so it can be used directly
-    /// as an APIM <c>url_template</c>. Both OpenAPI and APIM use the same <c>{param}</c>
-    /// placeholder syntax, so no further transformation is needed.
+    /// as an APIM <c>url_template</c>. Both OpenAPI and APIM use the same
+    /// <c>{param}</c> placeholder syntax, so no further transformation is needed.
     /// </summary>
     private static string ConvertPathToTemplate(string openApiPath)
     {
-        // OpenAPI uses {param}, Terraform APIM uses the same format
         var template = openApiPath.TrimStart('/');
         return string.IsNullOrEmpty(template) ? "/" : template;
     }
 
     /// <summary>
     /// Builds the APIM request model from an OpenAPI operation, collecting headers,
-    /// query parameters, and request body representations. Path-level parameters are
-    /// merged with operation-level parameters; operation-level takes precedence.
+    /// query parameters, and request body representations (including complex
+    /// $ref'd schemas — the reference id becomes schema_id/type_name).
+    /// Path-level parameters are merged with operation-level parameters;
+    /// operation-level takes precedence.
     /// </summary>
     private static List<ApimOperationRequest> BuildRequests(OpenApiOperation operation, OpenApiPathItem pathItem)
     {
@@ -181,7 +147,6 @@ public sealed class OpenApiParserService : IOpenApiParser
         var queryParams = new List<ApimParameter>();
         var representations = new List<ApimRepresentation>();
 
-        // Combine path-level and operation-level parameters
         var allParameters = (pathItem.Parameters ?? [])
             .Concat(operation.Parameters ?? [])
             .GroupBy(p => (p.Name, p.In))
@@ -209,7 +174,7 @@ public sealed class OpenApiParserService : IOpenApiParser
             }
         }
 
-        // Check for security schemes that require Authorization header
+        // Operations with a security requirement get an Authorization header.
         if (operation.Security?.Count > 0 || headers.All(h => h.Name != "Authorization"))
         {
             var hasSecurityRequirement = operation.Security?.Any(s => s.Count > 0) == true;
@@ -294,9 +259,8 @@ public sealed class OpenApiParserService : IOpenApiParser
     }
 
     /// <summary>
-    /// Returns the first 2xx status code declared on the operation, falling back to
-    /// 200 when no success response is defined. This is used as the operation's
-    /// primary <c>status_code</c> in the Terraform output.
+    /// Returns the first 2xx status code declared on the operation, falling back
+    /// to 200. Used as the operation's primary <c>status_code</c>.
     /// </summary>
     private static int GetPrimarySuccessStatusCode(OpenApiOperation operation)
     {
@@ -327,9 +291,8 @@ public sealed class OpenApiParserService : IOpenApiParser
     }
 
     /// <summary>
-    /// Builds the CORS policy XML string that will be embedded in the Terraform
-    /// <c>policy = &lt;&lt;XML</c> heredoc block. Returns an empty string when no
-    /// allowed origins can be derived from the settings (no frontend host or local dev host).
+    /// Builds the CORS policy XML embedded in the Terraform <c>policy</c> heredoc.
+    /// Returns an empty string when no allowed origins can be derived.
     /// </summary>
     private static string BuildCorsPolicy(ConversionSettings settings)
     {

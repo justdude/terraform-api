@@ -1,4 +1,5 @@
 using TerraformApi.Application.Services;
+using TerraformApi.Application.Services.OpenApi;
 
 namespace TerraformApi.Application.Tests.Services;
 
@@ -16,7 +17,7 @@ namespace TerraformApi.Application.Tests.Services;
 /// </summary>
 public class OpenApiOperationsFetcherServiceTests
 {
-    private readonly OpenApiOperationsFetcherService _fetcher = new();
+    private readonly OpenApiFacadeService _fetcher = new(new ApimNamingValidatorService());
 
     #region Helpers
 
