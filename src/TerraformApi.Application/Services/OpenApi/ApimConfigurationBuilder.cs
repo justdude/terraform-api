@@ -194,11 +194,12 @@ internal static class ApimConfigurationBuilder
         {
             foreach (var content in operation.RequestBody.Content)
             {
+                var (schemaId, typeName) = OpenApiSchemaInterpreter.ResolveTypeReference(content.Value.Schema);
                 representations.Add(new ApimRepresentation
                 {
                     ContentType = content.Key,
-                    SchemaId = content.Value.Schema?.Reference?.Id,
-                    TypeName = content.Value.Schema?.Reference?.Id
+                    SchemaId = schemaId,
+                    TypeName = typeName
                 });
             }
         }
@@ -238,11 +239,12 @@ internal static class ApimConfigurationBuilder
             {
                 foreach (var content in response.Value.Content)
                 {
+                    var (schemaId, typeName) = OpenApiSchemaInterpreter.ResolveTypeReference(content.Value.Schema);
                     representations.Add(new ApimRepresentation
                     {
                         ContentType = content.Key,
-                        SchemaId = content.Value.Schema?.Reference?.Id,
-                        TypeName = content.Value.Schema?.Reference?.Id
+                        SchemaId = schemaId,
+                        TypeName = typeName
                     });
                 }
             }

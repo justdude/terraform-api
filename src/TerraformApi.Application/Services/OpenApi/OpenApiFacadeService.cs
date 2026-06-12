@@ -43,7 +43,15 @@ public sealed class OpenApiFacadeService : IOpenApiParser, IOpenApiOperationsFet
     {
         var read = _documentReader.Read(openApiJson);
 
-        if (read.Document is null || read.Errors.Count > 0)
+        // Tolerant by design: diagnostics with a USABLE document (3.1 compat
+        // mode, vendor extensions, JSON-Schema-only keywords) do not block
+        // conversion. Diagnostics are fatal only when the document yielded no
+        // paths either — the 1.6 reader is YAML-lenient and coerces garbage
+        // input into an empty document instead of throwing. Strict checking
+        // lives in the validate endpoint/tool, which surfaces all diagnostics.
+        var unusable = read.Document is null
+            || (read.Errors.Count > 0 && (read.Document.Paths is null || read.Document.Paths.Count == 0));
+        if (unusable)
         {
             var reason = read.Errors.Count > 0 ? string.Join("; ", read.Errors) : "Unknown error";
             throw new InvalidOperationException($"Failed to parse OpenAPI document: {reason}");

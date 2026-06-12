@@ -29,8 +29,15 @@ public interface IOpenApiDocumentReader
 /// registered as a singleton. Pinned to the 1.6.x line because Swashbuckle 7.x
 /// in the API host depends on Microsoft.OpenApi 1.6.x.
 /// </summary>
-public sealed class OpenApiDocumentReader : IOpenApiDocumentReader
+public sealed partial class OpenApiDocumentReader : IOpenApiDocumentReader
 {
+    /// <summary>
+    /// Matches the document's top-level version declaration for the
+    /// OpenAPI 3.1 compatibility downgrade. Replaced once, on the first match.
+    /// </summary>
+    [System.Text.RegularExpressions.GeneratedRegex("""("openapi"\s*:\s*")3\.1(?:\.\d+)?(")""")]
+    private static partial System.Text.RegularExpressions.Regex OpenApi31VersionRegex();
+
     /// <inheritdoc />
     public OpenApiReadResult Read(string openApiText)
     {
@@ -42,22 +49,42 @@ public sealed class OpenApiDocumentReader : IOpenApiDocumentReader
             };
         }
 
+        var warnings = new List<string>();
+
+        // OpenAPI 3.1 compatibility mode: the 1.6.x reader rejects 3.1
+        // documents outright ("specification version '3.1.x' is not
+        // supported") — yet 3.1 is what .NET 10's built-in generator emits by
+        // default. 3.1 is a superset refinement of 3.0 for the constructs this
+        // converter consumes (paths, operations, parameters, $refs), so we
+        // parse it as 3.0 and surface a warning. JSON-Schema-only keywords
+        // produce non-fatal diagnostics and are ignored.
+        var effectiveText = openApiText;
+        var versionMatch = OpenApi31VersionRegex().Match(openApiText);
+        if (versionMatch.Success)
+        {
+            effectiveText = OpenApi31VersionRegex().Replace(openApiText, "${1}3.0.3${2}", 1);
+            warnings.Add("OpenAPI 3.1 document read in 3.0 compatibility mode — " +
+                         "JSON-Schema-only keywords (type arrays, $defs, …) are ignored.");
+        }
+
         try
         {
             var reader = new OpenApiStringReader();
-            var document = reader.Read(openApiText, out var diagnostic);
+            var document = reader.Read(effectiveText, out var diagnostic);
 
             return new OpenApiReadResult
             {
                 Document = document,
-                Errors = diagnostic?.Errors.Select(e => e.Message).ToList() ?? []
+                Errors = diagnostic?.Errors.Select(e => e.Message).ToList() ?? [],
+                Warnings = warnings
             };
         }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
         {
             return new OpenApiReadResult
             {
-                Errors = [ex.Message]
+                Errors = [ex.Message],
+                Warnings = warnings
             };
         }
     }
@@ -71,6 +98,9 @@ public sealed record OpenApiReadResult
 
     /// <summary>Reader diagnostics and/or the thrown exception message.</summary>
     public List<string> Errors { get; init; } = [];
+
+    /// <summary>Non-fatal notes, e.g. the OpenAPI 3.1 compatibility-mode downgrade.</summary>
+    public List<string> Warnings { get; init; } = [];
 
     /// <summary>True when a document with a usable paths collection was produced.</summary>
     public bool HasUsablePaths => Document?.Paths is { };
