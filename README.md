@@ -122,6 +122,20 @@ Response: `{ "success": true, "terraformConfig": "...final HCL...", "report": { 
 
 Related endpoints: `POST /api/analyze-terraform` (read-only analysis) and `POST /api/apply-template-profile` (Templatize ⇄ Resolve). Default merge policies are documented in [docs/sync-policies.md](docs/sync-policies.md).
 
+## Deploying to another machine
+
+Use `dotnet publish`, not a copy of `bin/Debug`:
+
+```bash
+dotnet publish src/TerraformApi.Api -c Release -o ./publish
+```
+
+`bin/Debug` does **not** contain `wwwroot` (the web frontend's HTML/CSS/JS) — the build serves it from the project directory. Only `publish` output bundles it. Run the published app from its own directory so the content root resolves correctly.
+
+Troubleshooting **"the page loads but has no styling"**:
+1. Check `wwwroot/css/styles.css` exists next to the deployed binary — if missing, you copied build output instead of publish output (the server now returns a clean `404` for missing assets instead of silently serving HTML).
+2. Hard-refresh the browser (`Ctrl+F5`) — older versions of the app answered missing asset URLs with `index.html` (200), which browsers cache; a poisoned cache keeps the page unstyled even after the deployment is fixed.
+
 ## Prerequisites
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)

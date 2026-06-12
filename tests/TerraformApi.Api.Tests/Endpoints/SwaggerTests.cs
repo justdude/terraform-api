@@ -91,4 +91,33 @@ public class SwaggerTests : IClassFixture<WebApplicationFactory<Program>>
         // Fallback HTML must never be cacheable against arbitrary URLs.
         Assert.Contains("no-store", response.Headers.CacheControl?.ToString());
     }
+
+    [Fact]
+    public async Task MissingAsset_Returns404_NeverHtml()
+    {
+        // A missing stylesheet/script must 404 — serving index.html instead
+        // makes the page render unstyled (browser discards HTML-as-CSS) and
+        // can poison the browser cache for the asset URL.
+        var response = await _client.GetAsync("/css/does-not-exist.css");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task StylesCss_ServedWithCssContentType()
+    {
+        var response = await _client.GetAsync("/css/styles.css");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("text/css", response.Content.Headers.ContentType?.MediaType);
+    }
+
+    [Fact]
+    public async Task AppJs_ServedWithJsContentType()
+    {
+        var response = await _client.GetAsync("/js/app.js");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("javascript", response.Content.Headers.ContentType?.MediaType);
+    }
 }

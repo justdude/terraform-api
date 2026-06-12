@@ -109,13 +109,16 @@ app.UseSwaggerUI(options =>
 
 app.MapControllers();
 
-// SPA fallback for the web frontend. Excludes /api and /swagger so those
-// namespaces can never be answered with index.html (a cached HTML response
-// for swagger.json renders as "definition does not specify a valid version
-// field" in Swagger UI). The fallback HTML itself is marked no-store so
-// browsers never cache it against an arbitrary URL.
+// SPA fallback for the web frontend — client-side routes only:
+//  - :nonfile  → requests that look like files (/css/styles.css, /js/app.js)
+//                are NEVER answered with index.html. A missing asset returns
+//                an honest 404 instead of HTML, which browsers would silently
+//                discard as a stylesheet/script (page renders unstyled) and
+//                could cache against the asset URL.
+//  - regex     → /api and /swagger namespaces are excluded the same way.
+// The fallback HTML itself is no-store so it is never cached for other URLs.
 app.MapFallbackToFile(
-    "{*path:regex(^(?!api($|/)|swagger($|/)).*$)}",
+    "{*path:nonfile:regex(^(?!api($|/)|swagger($|/)).*$)}",
     "index.html",
     new StaticFileOptions
     {
