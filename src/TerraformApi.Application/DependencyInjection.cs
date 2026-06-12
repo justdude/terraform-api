@@ -29,6 +29,8 @@ public static class DependencyInjection
         services.AddSingleton<IOperationMatcher, Services.Sync.OperationMatcherService>();
         services.AddSingleton<IDuplicateDetector, Services.Sync.DuplicateDetectorService>();
         services.AddSingleton<IAppendOnlySynchronizer, Services.Sync.AppendOnlySynchronizerService>();
+        services.AddSingleton<IApimTemplateProfileApplier, Services.Sync.ApimTemplateProfileApplierService>();
+        services.AddSingleton<ISyncOrchestrator, SyncOrchestratorService>();
 
         return services;
     }
