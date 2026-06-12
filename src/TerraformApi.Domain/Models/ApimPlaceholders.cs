@@ -82,7 +82,7 @@ public static class ApimPlaceholders
 
         var sb = new System.Text.StringBuilder();
         sb.AppendLine("# ============================================================================");
-        sb.AppendLine("# GENERATED WITH PLACEHOLDER TAGS — replace them before applying:");
+        sb.AppendLine("# GENERATED WITH PLACEHOLDER TAGS - replace them before applying:");
         foreach (var tag in defaultedTags.Distinct())
         {
             var description = Descriptions.GetValueOrDefault(tag, "value not provided");

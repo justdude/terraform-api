@@ -64,6 +64,8 @@ The HTTP API and the MCP server are two faces of the same engine — each endpoi
 
 Both hosts resolve `openApiJson`/`openApiUrl` input through the same `OpenApiDocumentResolver`, so validation and error messages are identical.
 
+See [docs/mcp-usage.md](docs/mcp-usage.md) for usage **with an MCP client**, **without MCP** (HTTP API), and **headless automation** — including running conversion automatically after a project build via `scripts/convert-after-build.ps1`.
+
 ## Placeholder tags for missing settings
 
 Every APIM setting (`environment`, `apiGroupName`, `stageGroupName`, `apimName`, `apiPathPrefix`, `apiPathSuffix`, `apiGatewayHost`, `backendServicePath`) is **optional** in both the API and the MCP tools. Anything you don't provide is generated with a replaceable tag, and the file starts with a comment explaining each one:
