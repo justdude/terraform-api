@@ -96,18 +96,31 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseCors();
+app.UseDefaultFiles(); // "/" → wwwroot/index.html (the constrained SPA fallback below doesn't match the empty path)
 app.UseStaticFiles();
 
 // Swagger UI at /swagger
 app.UseSwagger();
 app.UseSwaggerUI(options =>
 {
-    options.SwaggerEndpoint("/swagger/v1/swagger.json", "Terraform API v1");
+    // Relative URL — resolves under /swagger and stays correct behind proxies/path bases.
+    options.SwaggerEndpoint("v1/swagger.json", "Terraform API v1");
 });
 
 app.MapControllers();
 
-app.MapFallbackToFile("index.html");
+// SPA fallback for the web frontend. Excludes /api and /swagger so those
+// namespaces can never be answered with index.html (a cached HTML response
+// for swagger.json renders as "definition does not specify a valid version
+// field" in Swagger UI). The fallback HTML itself is marked no-store so
+// browsers never cache it against an arbitrary URL.
+app.MapFallbackToFile(
+    "{*path:regex(^(?!api($|/)|swagger($|/)).*$)}",
+    "index.html",
+    new StaticFileOptions
+    {
+        OnPrepareResponse = ctx => ctx.Context.Response.Headers.CacheControl = "no-store"
+    });
 
 app.Run();
 
