@@ -182,8 +182,9 @@ public sealed class ApimTerraformWriterService : IApimTerraformWriter
     /// <summary>
     /// Builds the HCL object for a single operation using the profile's field
     /// templates ({op} is substituted with the kebab-cased operationId).
+    /// Shared with the synchronizer for appending new operations.
     /// </summary>
-    internal HclObject BuildOperationObject(ApimApiOperation operation, ApimTemplateProfile profile)
+    internal static HclObject BuildOperationObject(ApimApiOperation operation, ApimTemplateProfile profile)
     {
         var op = ToKebabCase(operation.OperationId);
 
