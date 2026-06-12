@@ -20,8 +20,10 @@ public static class DependencyInjection
         services.AddSingleton<IApimNamingValidator, ApimNamingValidatorService>();
 
         // OpenAPI facade (ACC2): ONE instance serves both interfaces. The facade
-        // delegates to static helpers; document reading is centralized in
-        // OpenApiDocumentReader (the only Microsoft.OpenApi.Readers call site).
+        // delegates to static helpers; document reading goes through the
+        // injectable IOpenApiDocumentReader (the only Microsoft.OpenApi.Readers
+        // call site lives in its default implementation).
+        services.AddSingleton<Services.OpenApi.IOpenApiDocumentReader, Services.OpenApi.OpenApiDocumentReader>();
         services.AddSingleton<Services.OpenApi.OpenApiFacadeService>();
         services.AddSingleton<IOpenApiParser>(sp => sp.GetRequiredService<Services.OpenApi.OpenApiFacadeService>());
         services.AddSingleton<IOpenApiOperationsFetcher>(sp => sp.GetRequiredService<Services.OpenApi.OpenApiFacadeService>());

@@ -18,10 +18,18 @@ namespace TerraformApi.Application.Services.OpenApi;
 public sealed class OpenApiFacadeService : IOpenApiParser, IOpenApiOperationsFetcher
 {
     private readonly IApimNamingValidator _namingValidator;
+    private readonly IOpenApiDocumentReader _documentReader;
 
-    public OpenApiFacadeService(IApimNamingValidator namingValidator)
+    public OpenApiFacadeService(IApimNamingValidator namingValidator, IOpenApiDocumentReader documentReader)
     {
         _namingValidator = namingValidator;
+        _documentReader = documentReader;
+    }
+
+    /// <summary>Convenience constructor for plain library use — wires the default reader.</summary>
+    public OpenApiFacadeService(IApimNamingValidator namingValidator)
+        : this(namingValidator, new OpenApiDocumentReader())
+    {
     }
 
     /// <summary>
@@ -33,7 +41,7 @@ public sealed class OpenApiFacadeService : IOpenApiParser, IOpenApiOperationsFet
     /// </exception>
     public ApimConfiguration Parse(string openApiJson, ConversionSettings settings)
     {
-        var read = OpenApiDocumentReader.Read(openApiJson);
+        var read = _documentReader.Read(openApiJson);
 
         if (read.Document is null || read.Errors.Count > 0)
         {
@@ -55,7 +63,7 @@ public sealed class OpenApiFacadeService : IOpenApiParser, IOpenApiOperationsFet
     /// </summary>
     public OperationsListResult ParseOperations(string openApiJson, string sourceUrl = "inline")
     {
-        var read = OpenApiDocumentReader.Read(openApiJson);
+        var read = _documentReader.Read(openApiJson);
 
         if (read.Document?.Paths is null || read.Document.Paths.Count == 0)
         {

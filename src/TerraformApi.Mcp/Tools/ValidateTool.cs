@@ -21,6 +21,7 @@ public static class ValidateTool
     public static async Task<string> Validate(
         HttpClient httpClient,
         IApimNamingValidator validator,
+        IOpenApiDocumentReader documentReader,
         [Description("The OpenAPI specification JSON string to validate (OpenAPI 3.x format). Leave empty if providing openApiUrl instead.")] string? openApiJson = null,
         [Description("URL to fetch the OpenAPI specification from (e.g., https://api.example.com/openapi.json). Used if openApiJson is not provided.")] string? openApiUrl = null,
         [Description("Target environment name for operation ID generation (e.g. 'dev')")] string environment = "dev",
@@ -33,9 +34,9 @@ public static class ValidateTool
         {
             var resolvedJson = await ConvertTool.ResolveOpenApiJson(httpClient, openApiJson, openApiUrl, cancellationToken);
 
-            // Centralized reader — the only Microsoft.OpenApi.Readers call site
-            // lives in OpenApiDocumentReader.
-            var read = OpenApiDocumentReader.Read(resolvedJson);
+            // Injected reader — the only Microsoft.OpenApi.Readers call site
+            // lives in its default implementation.
+            var read = documentReader.Read(resolvedJson);
             var doc = read.Document;
             errors.AddRange(read.Errors);
 

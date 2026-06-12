@@ -7,6 +7,7 @@ namespace TerraformApi.Mcp.Tests.Tools;
 public class ValidateToolTests
 {
     private readonly IApimNamingValidator _validator;
+    private readonly Application.Services.OpenApi.OpenApiDocumentReader _documentReader = new();
     private readonly HttpClient _httpClient = new();
 
     private const string ValidOpenApi = """
@@ -45,7 +46,7 @@ public class ValidateToolTests
     [Fact]
     public async Task Validate_ValidSpec_ReturnsValid()
     {
-        var result = await ValidateTool.Validate(_httpClient, _validator, openApiJson: ValidOpenApi);
+        var result = await ValidateTool.Validate(_httpClient, _validator, _documentReader, openApiJson: ValidOpenApi);
 
         Assert.Contains("Result: VALID", result);
         Assert.Contains("All naming rules pass", result);
@@ -54,7 +55,7 @@ public class ValidateToolTests
     [Fact]
     public async Task Validate_ValidSpec_ShowsApiTitle()
     {
-        var result = await ValidateTool.Validate(_httpClient, _validator, openApiJson: ValidOpenApi);
+        var result = await ValidateTool.Validate(_httpClient, _validator, _documentReader, openApiJson: ValidOpenApi);
 
         Assert.Contains("API Title: Order API", result);
         Assert.Contains("API Version: 1.0.0", result);
@@ -63,7 +64,7 @@ public class ValidateToolTests
     [Fact]
     public async Task Validate_ValidSpec_ListsAllOperations()
     {
-        var result = await ValidateTool.Validate(_httpClient, _validator, openApiJson: ValidOpenApi);
+        var result = await ValidateTool.Validate(_httpClient, _validator, _documentReader, openApiJson: ValidOpenApi);
 
         Assert.Contains("Operations (3):", result);
         Assert.Contains("GET", result);
@@ -75,7 +76,7 @@ public class ValidateToolTests
     [Fact]
     public async Task Validate_ValidSpec_ShowsOperationIds()
     {
-        var result = await ValidateTool.Validate(_httpClient, _validator, openApiJson: ValidOpenApi, environment: "dev");
+        var result = await ValidateTool.Validate(_httpClient, _validator, _documentReader, openApiJson: ValidOpenApi, environment: "dev");
 
         Assert.Contains("listorders-dev", result.ToLowerInvariant());
         Assert.Contains("createorder-dev", result.ToLowerInvariant());
@@ -85,7 +86,7 @@ public class ValidateToolTests
     [Fact]
     public async Task Validate_ValidSpec_MarksOperationsAsOk()
     {
-        var result = await ValidateTool.Validate(_httpClient, _validator, openApiJson: ValidOpenApi);
+        var result = await ValidateTool.Validate(_httpClient, _validator, _documentReader, openApiJson: ValidOpenApi);
 
         Assert.Contains("[OK]", result);
         Assert.DoesNotContain("[INVALID]", result);
@@ -94,7 +95,7 @@ public class ValidateToolTests
     [Fact]
     public async Task Validate_InvalidJson_ReturnsFailedMessage()
     {
-        var result = await ValidateTool.Validate(_httpClient, _validator, openApiJson: "{totally broken json!!");
+        var result = await ValidateTool.Validate(_httpClient, _validator, _documentReader, openApiJson: "{totally broken json!!");
 
         Assert.Contains("VALIDATION FAILED", result);
         Assert.Contains("Errors:", result);
@@ -111,7 +112,7 @@ public class ValidateToolTests
             }
             """;
 
-        var result = await ValidateTool.Validate(_httpClient, _validator, openApiJson: emptyPathsApi);
+        var result = await ValidateTool.Validate(_httpClient, _validator, _documentReader, openApiJson: emptyPathsApi);
 
         Assert.Contains("Operations (0):", result);
         Assert.Contains("Result: VALID", result);
@@ -120,7 +121,7 @@ public class ValidateToolTests
     [Fact]
     public async Task Validate_DifferentEnvironment_UsesEnvironmentInOperationIds()
     {
-        var result = await ValidateTool.Validate(_httpClient, _validator, openApiJson: ValidOpenApi, environment: "staging");
+        var result = await ValidateTool.Validate(_httpClient, _validator, _documentReader, openApiJson: ValidOpenApi, environment: "staging");
 
         Assert.Contains("listorders-staging", result.ToLowerInvariant());
         Assert.Contains("createorder-staging", result.ToLowerInvariant());
@@ -129,7 +130,7 @@ public class ValidateToolTests
     [Fact]
     public async Task Validate_DefaultEnvironment_UsesDev()
     {
-        var result = await ValidateTool.Validate(_httpClient, _validator, openApiJson: ValidOpenApi);
+        var result = await ValidateTool.Validate(_httpClient, _validator, _documentReader, openApiJson: ValidOpenApi);
 
         Assert.Contains("listorders-dev", result.ToLowerInvariant());
     }
@@ -152,7 +153,7 @@ public class ValidateToolTests
             }
             """;
 
-        var result = await ValidateTool.Validate(_httpClient, _validator, openApiJson: noOpIdApi);
+        var result = await ValidateTool.Validate(_httpClient, _validator, _documentReader, openApiJson: noOpIdApi);
 
         Assert.Contains("Operations (1):", result);
         Assert.Contains("GET", result);
@@ -193,7 +194,7 @@ public class ValidateToolTests
             }
             """;
 
-        var result = await ValidateTool.Validate(_httpClient, _validator, openApiJson: multiMethodApi);
+        var result = await ValidateTool.Validate(_httpClient, _validator, _documentReader, openApiJson: multiMethodApi);
 
         Assert.Contains("Operations (4):", result);
         Assert.Contains("GET", result);
@@ -205,7 +206,7 @@ public class ValidateToolTests
     [Fact]
     public async Task Validate_NeitherJsonNorUrl_ReturnsError()
     {
-        var result = await ValidateTool.Validate(_httpClient, _validator);
+        var result = await ValidateTool.Validate(_httpClient, _validator, _documentReader);
 
         Assert.Contains("failed", result, StringComparison.OrdinalIgnoreCase);
     }

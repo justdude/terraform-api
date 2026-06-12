@@ -73,7 +73,7 @@ public class OpenApiFacadeIntegrationTests
     [Fact]
     public void Acc1_DocumentReader_ReadsFixtureCleanly()
     {
-        var result = OpenApiDocumentReader.Read(LoadFixture());
+        var result = new OpenApiDocumentReader().Read(LoadFixture());
 
         Assert.True(result.IsClean, string.Join("; ", result.Errors));
         Assert.Equal("Order Management API", result.Document!.Info.Title);
@@ -83,11 +83,12 @@ public class OpenApiFacadeIntegrationTests
     [Fact]
     public void Acc1_DocumentReader_NeverThrows_CollectsErrors()
     {
-        var garbage = OpenApiDocumentReader.Read("{ not openapi at all !!");
+        var reader = new OpenApiDocumentReader();
+        var garbage = reader.Read("{ not openapi at all !!");
         Assert.False(garbage.IsClean);
         Assert.NotEmpty(garbage.Errors);
 
-        var empty = OpenApiDocumentReader.Read("");
+        var empty = reader.Read("");
         Assert.False(empty.IsClean);
         Assert.Contains("empty", empty.Errors[0], StringComparison.OrdinalIgnoreCase);
     }
@@ -100,6 +101,37 @@ public class OpenApiFacadeIntegrationTests
         var ex = Assert.Throws<InvalidOperationException>(
             () => facade.Parse("{ broken", FullSettings()));
         Assert.StartsWith("Failed to parse OpenAPI document:", ex.Message);
+    }
+
+    [Fact]
+    public void Acc1_Reader_IsInjectable_FacadeDelegatesToSubstitute()
+    {
+        // The reader is an instance dependency — substitute it and prove the
+        // facade reads through it (this is what enables swapping in the
+        // Microsoft.OpenApi 3.x reader later without touching the facade).
+        var readerMock = new Moq.Mock<IOpenApiDocumentReader>();
+        readerMock
+            .Setup(r => r.Read(Moq.It.IsAny<string>()))
+            .Returns(new OpenApiReadResult { Errors = ["substituted reader was called"] });
+
+        var facade = new OpenApiFacadeService(new ApimNamingValidatorService(), readerMock.Object);
+
+        var result = facade.ParseOperations("anything");
+
+        Assert.False(result.Success);
+        Assert.Contains("substituted reader was called", result.Error);
+        readerMock.Verify(r => r.Read("anything"), Moq.Times.Once);
+    }
+
+    [Fact]
+    public void Acc1_Reader_RegisteredInDi_AndUsedByFacade()
+    {
+        var services = new ServiceCollection();
+        services.AddApplicationServices();
+        using var provider = services.BuildServiceProvider();
+
+        var reader = provider.GetRequiredService<IOpenApiDocumentReader>();
+        Assert.IsType<OpenApiDocumentReader>(reader);
     }
 
     // -----------------------------------------------------------------

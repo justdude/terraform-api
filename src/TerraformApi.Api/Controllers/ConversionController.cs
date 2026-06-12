@@ -24,6 +24,7 @@ public sealed class ConversionController : ControllerBase
     private readonly ITerraformOperationsParser _terraformParser;
     private readonly IOpenApiParser _openApiParser;
     private readonly IApimNamingValidator _namingValidator;
+    private readonly IOpenApiDocumentReader _documentReader;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IOptions<Dictionary<string, ApimEnvironmentConfig>> _environments;
 
@@ -34,6 +35,7 @@ public sealed class ConversionController : ControllerBase
         ITerraformOperationsParser terraformParser,
         IOpenApiParser openApiParser,
         IApimNamingValidator namingValidator,
+        IOpenApiDocumentReader documentReader,
         IHttpClientFactory httpClientFactory,
         IOptions<Dictionary<string, ApimEnvironmentConfig>> environments)
     {
@@ -43,6 +45,7 @@ public sealed class ConversionController : ControllerBase
         _terraformParser = terraformParser;
         _openApiParser = openApiParser;
         _namingValidator = namingValidator;
+        _documentReader = documentReader;
         _httpClientFactory = httpClientFactory;
         _environments = environments;
     }
@@ -215,9 +218,9 @@ public sealed class ConversionController : ControllerBase
                 });
             }
 
-            // Centralized reader — the only Microsoft.OpenApi.Readers call site
-            // lives in OpenApiDocumentReader (Application layer).
-            var read = OpenApiDocumentReader.Read(openApiJson);
+            // Injected reader — the only Microsoft.OpenApi.Readers call site
+            // lives in its default implementation (Application layer).
+            var read = _documentReader.Read(openApiJson);
             var doc = read.Document;
 
             if (read.Errors.Count > 0)

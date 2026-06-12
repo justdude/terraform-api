@@ -4,21 +4,35 @@ using Microsoft.OpenApi.Readers;
 namespace TerraformApi.Application.Services.OpenApi;
 
 /// <summary>
-/// The single place in the codebase that touches <c>Microsoft.OpenApi.Readers</c>.
-/// Every consumer (facade service, MCP tools, API controllers) reads OpenAPI
-/// documents through this helper, so a future migration to the
-/// Microsoft.OpenApi 3.x reader API (<c>OpenApiDocument.Parse</c>, which
-/// replaced <c>OpenApiStringReader</c>) is a one-file change.
-/// Pinned to the 1.6.x line because Swashbuckle 7.x in the API host depends
-/// on Microsoft.OpenApi 1.6.x.
+/// Reads OpenAPI text into a parsed document. This abstraction exists so the
+/// underlying reader implementation is swappable (tests can substitute it, and
+/// the future migration to the Microsoft.OpenApi 3.x reader API —
+/// <c>OpenApiDocument.Parse</c>, which replaced <c>OpenApiStringReader</c> —
+/// only needs a new implementation of this interface).
+///
+/// Lives in the Application layer (not Domain) deliberately: the result type
+/// exposes the vendor <see cref="OpenApiDocument"/> model, which must not leak
+/// into the dependency-free Domain project.
 /// </summary>
-public static class OpenApiDocumentReader
+public interface IOpenApiDocumentReader
 {
     /// <summary>
     /// Reads an OpenAPI JSON/YAML string. Never throws — reader exceptions and
     /// diagnostics are collected into <see cref="OpenApiReadResult.Errors"/>.
     /// </summary>
-    public static OpenApiReadResult Read(string openApiText)
+    OpenApiReadResult Read(string openApiText);
+}
+
+/// <summary>
+/// Default reader built on <c>Microsoft.OpenApi.Readers</c> — the single place
+/// in the codebase that touches <see cref="OpenApiStringReader"/>. Stateless;
+/// registered as a singleton. Pinned to the 1.6.x line because Swashbuckle 7.x
+/// in the API host depends on Microsoft.OpenApi 1.6.x.
+/// </summary>
+public sealed class OpenApiDocumentReader : IOpenApiDocumentReader
+{
+    /// <inheritdoc />
+    public OpenApiReadResult Read(string openApiText)
     {
         if (string.IsNullOrWhiteSpace(openApiText))
         {
