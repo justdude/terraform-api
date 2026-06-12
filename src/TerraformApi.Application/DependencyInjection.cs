@@ -27,6 +27,7 @@ public static class DependencyInjection
         services.AddSingleton<Services.Sync.TerraformInterpolationResolver>();
         services.AddSingleton<IApimTemplateProfileDetector, Services.Sync.ApimTemplateProfileDetectorService>();
         services.AddSingleton<IOperationMatcher, Services.Sync.OperationMatcherService>();
+        services.AddSingleton<IDuplicateDetector, Services.Sync.DuplicateDetectorService>();
 
         return services;
     }
