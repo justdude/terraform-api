@@ -33,9 +33,47 @@ tests/
   - Resource group: 1–90 chars, alphanumeric + hyphens + underscores + dots + parentheses
 - **Fetch operations** from any OpenAPI/Swagger URL — returns methods, paths, parameters, tags
 - **Cross-environment transform** — sync Terraform configs between dev/staging/prod, matching operations by URL+method
+- **Append-only sync** — AST-based synchronization of existing Terraform with an OpenAPI spec: new operations are appended in the file's detected templating style, nothing is ever deleted (see below)
+- **Analyze** — inspect an existing Terraform file: API groups, operation counts, detected `${...}` placeholder style, duplicates
+- **Template profiles** — templatize literals (`apim-company-dev` → `${apim_name}`) or resolve placeholders for a specific environment
 - Web UI with drag-and-drop file upload, no Node.js required
-- **MCP server** with 6 tools for AI assistant integration (VS Code, Claude Code, Claude Desktop)
+- **MCP server** with 10 tools for AI assistant integration (VS Code, Claude Code, Claude Desktop)
 - Docker-ready for cloud deployment
+
+## Append-only sync
+
+`POST /api/sync` (or the `sync_openapi_with_terraform` MCP tool) merges an OpenAPI spec into an existing Terraform config with **append-only semantics**:
+
+- Operations **only in OpenAPI** are appended to `api_operations`, rendered in the templating style detected from the existing file, each with a descriptive comment block (`# GET /users/{id} | op_id: ...`).
+- Operations **only in Terraform** are always preserved untouched.
+- Operations **in both** (matched by URL+method, then operation id) are enriched only where a field is missing — by default `operation_id`, `method` and `url_template` are never modified.
+- Unmodified parts of the file are written back **byte-for-byte** (the HCL parser keeps source spans and only re-renders changed nodes).
+- When new operations introduce `${...}` placeholders, a `REPLACE BEFORE APPLY` header is added before `api_operations` listing every variable to define.
+
+Example request:
+
+```json
+POST /api/sync
+{
+  "openApiJson": "{ ...OpenAPI 3.x... }",
+  "existingTerraform": "apis = { bpc_apis = { backend_apis = { ... } } }",
+  "environment": "dev",
+  "apiGroupName": "${api_group_name}",
+  "stageGroupName": "rg-apim-dev",
+  "apimName": "apim-company-dev",
+  "apiPathPrefix": "myapp",
+  "apiPathSuffix": "api",
+  "apiGatewayHost": "api.dev.company.com",
+  "backendServicePath": "my-service",
+  "templateProfileName": "Auto",
+  "operationFieldOverrides": { "description": "Overwrite" },
+  "variableContext": { "env": "dev", "api_name": "bpc" }
+}
+```
+
+Response: `{ "success": true, "terraformConfig": "...final HCL...", "report": { "operationsAdded": 1, "operationsPreserved": 5, "operationsEnriched": 0, "operationsIdentical": 8, "diffs": [...], "duplicates": [], "warnings": [...] } }`
+
+Related endpoints: `POST /api/analyze-terraform` (read-only analysis) and `POST /api/apply-template-profile` (Templatize ⇄ Resolve). Default merge policies are documented in [docs/sync-policies.md](docs/sync-policies.md).
 
 ## Prerequisites
 
@@ -485,6 +523,10 @@ src/TerraformApi.Mcp/
     EnvironmentsTool.cs           # list_environment_presets
     TransformEnvironmentTool.cs   # transform_environment
     FetchOperationsTool.cs        # fetch_openapi_operations
+    ParseTerraformOperationsTool.cs # parse_terraform_operations
+    SyncTool.cs                   # sync_openapi_with_terraform
+    AnalyzeTool.cs                # analyze_terraform_apim
+    ApplyTemplateProfileTool.cs   # apply_template_profile
   appsettings.json                # Environment presets (same as API project)
 ```
 
@@ -493,8 +535,12 @@ src/TerraformApi.Mcp/
 | Tool | Description |
 |---|---|
 | `fetch_openapi_operations` | Fetches an OpenAPI spec from a URL and returns a structured list of all operations (methods, paths, parameters, tags) |
-| `convert_openapi_to_terraform` | Converts an OpenAPI JSON spec into a full APIM Terraform HCL block |
+| `parse_terraform_operations` | Parses a Terraform APIM config and returns the operations list in the same format as `fetch_openapi_operations` |
+| `convert_openapi_to_terraform` | Converts an OpenAPI JSON spec into a full APIM Terraform HCL block; optional `templateProfileName` produces templated `${...}` output with operation comments |
 | `update_terraform_from_openapi` | Merges a new OpenAPI spec into existing Terraform, preserving custom operations |
+| `sync_openapi_with_terraform` | **Append-only sync**: appends missing operations in the file's detected templating style, preserves everything else, returns a full diff report. Configurable per-field merge policy and match strategy |
+| `analyze_terraform_apim` | Read-only analysis of an existing Terraform file: API groups, operation counts, detected templating profile, referenced `${...}` variables, duplicates |
+| `apply_template_profile` | One-time `Templatize` (literals → `${...}` placeholders) or `Resolve` (placeholders → literals for a given environment) |
 | `validate_openapi_for_apim` | Validates an OpenAPI spec against APIM naming rules (no Terraform output) |
 | `list_environment_presets` | Lists configured APIM environment presets (resource groups, hosts, etc.) |
 | `transform_environment` | Transforms Terraform from one APIM environment to another, with optional merge/sync against existing target |
