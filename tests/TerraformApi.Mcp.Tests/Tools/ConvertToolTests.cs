@@ -1,4 +1,7 @@
 using TerraformApi.Application.Services;
+using TerraformApi.Application.Services.Apim;
+using TerraformApi.Application.Services.Hcl;
+using TerraformApi.Application.Services.Sync;
 using TerraformApi.Domain.Interfaces;
 using TerraformApi.Mcp.Tools;
 
@@ -7,6 +10,8 @@ namespace TerraformApi.Mcp.Tests.Tools;
 public class ConvertToolTests
 {
     private readonly IConversionOrchestrator _orchestrator;
+    private readonly IOpenApiParser _openApiParser;
+    private readonly IApimTerraformWriter _apimWriter;
     private readonly HttpClient _httpClient = new();
 
     private const string ValidOpenApi = """
@@ -44,6 +49,11 @@ public class ConvertToolTests
         var generator = new TerraformGeneratorService();
         var merger = new TerraformMergerService(generator);
         _orchestrator = new ConversionOrchestratorService(parser, generator, merger, validator);
+        _openApiParser = parser;
+        _apimWriter = new ApimTerraformWriterService(
+            new HclWriterService(),
+            new ApimTerraformReaderService(new HclParserService()),
+            new OperationCommentBuilderService());
     }
 
     [Fact]
@@ -52,6 +62,8 @@ public class ConvertToolTests
         var result = await ConvertTool.Convert(
             _httpClient,
             _orchestrator,
+            _openApiParser,
+            _apimWriter,
             openApiJson: ValidOpenApi,
             environment: "dev",
             apiGroupName: "pet-store-group",
@@ -74,6 +86,8 @@ public class ConvertToolTests
         var result = await ConvertTool.Convert(
             _httpClient,
             _orchestrator,
+            _openApiParser,
+            _apimWriter,
             openApiJson: ValidOpenApi,
             environment: "dev",
             apiGroupName: "pet-store-group",
@@ -95,6 +109,8 @@ public class ConvertToolTests
         var result = await ConvertTool.Convert(
             _httpClient,
             _orchestrator,
+            _openApiParser,
+            _apimWriter,
             openApiJson: ValidOpenApi,
             environment: "dev",
             apiGroupName: "pet-store-group",
@@ -115,6 +131,8 @@ public class ConvertToolTests
         var result = await ConvertTool.Convert(
             _httpClient,
             _orchestrator,
+            _openApiParser,
+            _apimWriter,
             openApiJson: "{this is not valid json!!",
             environment: "dev",
             apiGroupName: "pet-store-group",
@@ -134,6 +152,8 @@ public class ConvertToolTests
         var result = await ConvertTool.Convert(
             _httpClient,
             _orchestrator,
+            _openApiParser,
+            _apimWriter,
             openApiJson: ValidOpenApi,
             environment: "dev",
             apiGroupName: "pet-store-group",
@@ -154,6 +174,8 @@ public class ConvertToolTests
         var result = await ConvertTool.Convert(
             _httpClient,
             _orchestrator,
+            _openApiParser,
+            _apimWriter,
             openApiJson: ValidOpenApi,
             environment: "dev",
             apiGroupName: "pet-store-group",
@@ -180,6 +202,8 @@ public class ConvertToolTests
         var result = await ConvertTool.Convert(
             _httpClient,
             _orchestrator,
+            _openApiParser,
+            _apimWriter,
             openApiJson: ValidOpenApi,
             environment: "dev",
             apiGroupName: "pet-store-group",
@@ -200,6 +224,8 @@ public class ConvertToolTests
         var result = await ConvertTool.Convert(
             _httpClient,
             _orchestrator,
+            _openApiParser,
+            _apimWriter,
             openApiJson: ValidOpenApi,
             environment: "dev",
             apiGroupName: "pet-store-group",
@@ -224,6 +250,8 @@ public class ConvertToolTests
         var result = await ConvertTool.Convert(
             _httpClient,
             _orchestrator,
+            _openApiParser,
+            _apimWriter,
             openApiJson: ValidOpenApi,
             environment: "dev",
             apiGroupName: "pet-store-group",
@@ -245,6 +273,8 @@ public class ConvertToolTests
         var devResult = await ConvertTool.Convert(
             _httpClient,
             _orchestrator,
+            _openApiParser,
+            _apimWriter,
             openApiJson: ValidOpenApi,
             environment: "dev",
             apiGroupName: "pet-store-group",
@@ -258,6 +288,8 @@ public class ConvertToolTests
         var prodResult = await ConvertTool.Convert(
             _httpClient,
             _orchestrator,
+            _openApiParser,
+            _apimWriter,
             openApiJson: ValidOpenApi,
             environment: "prod",
             apiGroupName: "pet-store-group",
@@ -296,6 +328,8 @@ public class ConvertToolTests
         var result = await ConvertTool.Convert(
             _httpClient,
             _orchestrator,
+            _openApiParser,
+            _apimWriter,
             openApiJson: singleOpApi,
             environment: "dev",
             apiGroupName: "simple-group",

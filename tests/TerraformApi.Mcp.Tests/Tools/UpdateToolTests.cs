@@ -57,9 +57,18 @@ public class UpdateToolTests
 
     private async Task<string> GenerateInitialTerraform()
     {
+        var validator = new ApimNamingValidatorService();
+        var openApiParser = new OpenApiParserService(validator);
+        var apimWriter = new Application.Services.Apim.ApimTerraformWriterService(
+            new Application.Services.Hcl.HclWriterService(),
+            new Application.Services.Apim.ApimTerraformReaderService(new Application.Services.Hcl.HclParserService()),
+            new Application.Services.Sync.OperationCommentBuilderService());
+
         return await ConvertTool.Convert(
             _httpClient,
             _orchestrator,
+            openApiParser,
+            apimWriter,
             openApiJson: InitialOpenApi,
             environment: "dev",
             apiGroupName: "user-api-group",

@@ -17,7 +17,9 @@ public static class UpdateTool
     [Description("Updates an existing Azure APIM Terraform configuration with changes from a new OpenAPI JSON spec. " +
                  "Operations present in the existing Terraform but absent from the new spec are preserved " +
                  "(useful for custom/manually-added operations). Provide the new OpenAPI JSON (or URL to fetch it), " +
-                 "the existing Terraform HCL, and APIM settings.")]
+                 "the existing Terraform HCL, and APIM settings. " +
+                 "NOTE: for append-only merging with full per-field policy control, style detection and a " +
+                 "detailed sync report, prefer sync_openapi_with_terraform.")]
     public static async Task<string> Update(
         HttpClient httpClient,
         IConversionOrchestrator orchestrator,

@@ -17,10 +17,14 @@ public static class ConvertTool
     [Description("Converts an OpenAPI JSON specification into an Azure APIM Terraform configuration. " +
                  "You can provide either the OpenAPI JSON content directly or specify a URL to fetch it from. " +
                  "Include APIM settings (environment, resource group, APIM instance name, etc.) to generate " +
-                 "a complete Terraform HCL block for Azure API Management.")]
+                 "a complete Terraform HCL block for Azure API Management. " +
+                 "Optionally pass templateProfileName to generate templated output with ${...} placeholders " +
+                 "(UserExampleProfile/ExtendedProfile/LiteralProfile), operation comments and a placeholder header.")]
     public static async Task<string> Convert(
         HttpClient httpClient,
         IConversionOrchestrator orchestrator,
+        IOpenApiParser openApiParser,
+        IApimTerraformWriter apimWriter,
         [Description("Target environment name (e.g. 'dev', 'staging', 'prod')")] string environment,
         [Description("Terraform variable group name for the API (e.g. 'my-api-group')")] string apiGroupName,
         [Description("Azure resource group name for the APIM instance (e.g. 'rg-apim-dev')")] string stageGroupName,
@@ -50,6 +54,11 @@ public static class ConvertTool
         [Description("Product description")] string? productDescription = null,
         [Description("Whether the product requires a subscription (default: false)")] bool productSubscriptionRequired = false,
         [Description("Whether the product requires approval (default: false)")] bool productApprovalRequired = false,
+        [Description("Optional template profile for templated output: 'UserExampleProfile', 'ExtendedProfile' or 'LiteralProfile'. " +
+                     "Omit for classic literal generation.")] string? templateProfileName = null,
+        [Description("Add a descriptive comment block above each operation (templated output only, default: true)")] bool addOperationComments = true,
+        [Description("Add the REPLACE BEFORE APPLY placeholder header (templated output only, default: true)")] bool addReplaceBeforeApplyHeader = true,
+        [Description("Wrapper structure as JSON array (templated output only), e.g. [\"apis\",\"bpc_apis\",\"backend_apis\"] (the default) or [] for flat")] string? apiGroupParentPathJson = null,
         CancellationToken cancellationToken = default)
     {
         try
@@ -86,6 +95,31 @@ public static class ConvertTool
                 ProductSubscriptionRequired = productSubscriptionRequired,
                 ProductApprovalRequired = productApprovalRequired
             };
+
+            // Templated output path: build the AST through the template profile.
+            if (!string.IsNullOrWhiteSpace(templateProfileName))
+            {
+                var profile = Domain.Models.Sync.ApimTemplateProfile.GetByName(templateProfileName);
+                if (profile is null)
+                    return $"Conversion error: unknown template profile '{templateProfileName}'. " +
+                           "Available: UserExampleProfile, ExtendedProfile, LiteralProfile.";
+
+                IReadOnlyList<string>? parentPath = null;
+                if (!string.IsNullOrWhiteSpace(apiGroupParentPathJson))
+                    parentPath = JsonSerializer.Deserialize<List<string>>(apiGroupParentPathJson);
+
+                var configuration = openApiParser.Parse(resolvedJson, settings);
+                var buildOptions = new Domain.Models.Sync.BuildOptions
+                {
+                    Profile = profile,
+                    ApiGroupParentPath = parentPath ?? new Domain.Models.Sync.BuildOptions().ApiGroupParentPath,
+                    AddOperationComments = addOperationComments,
+                    AddReplaceBeforeApplyHeader = addReplaceBeforeApplyHeader
+                };
+
+                var document = apimWriter.BuildFromConfiguration(configuration, buildOptions);
+                return apimWriter.Write(document);
+            }
 
             var result = orchestrator.Convert(resolvedJson, settings);
 

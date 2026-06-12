@@ -75,6 +75,7 @@ app.UseCors();
 app.UseStaticFiles();
 
 app.MapConversionEndpoints();
+app.MapSyncEndpoints();
 
 app.MapFallbackToFile("index.html");
 
