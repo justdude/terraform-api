@@ -20,6 +20,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="Fixtures\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\TerraformApi.Application\TerraformApi.Application.csproj" />
     <ProjectReference Include="..\..\src\TerraformApi.Domain\TerraformApi.Domain.csproj" />
   </ItemGroup>

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using TerraformApi.Application.Services;
+using TerraformApi.Application.Services.Hcl;
 using TerraformApi.Domain.Interfaces;
 
 namespace TerraformApi.Application;
@@ -16,6 +17,10 @@ public static class DependencyInjection
         services.AddSingleton<IEnvironmentTransformer, EnvironmentTransformerService>();
         services.AddSingleton<ITerraformOperationsParser, TerraformOperationsParserService>();
         services.AddSingleton<IOpenApiOperationsFetcher, OpenApiOperationsFetcherService>();
+
+        // HCL AST pipeline (sync engine)
+        services.AddSingleton<IHclParser, HclParserService>();
+        services.AddSingleton<IHclWriter, HclWriterService>();
 
         return services;
     }
