@@ -21,6 +21,9 @@ public static class DependencyInjection
         // HCL AST pipeline (sync engine)
         services.AddSingleton<IHclParser, HclParserService>();
         services.AddSingleton<IHclWriter, HclWriterService>();
+        services.AddSingleton<IApimTerraformReader, Services.Apim.ApimTerraformReaderService>();
+        services.AddSingleton<IApimTerraformWriter, Services.Apim.ApimTerraformWriterService>();
+        services.AddSingleton<IOperationCommentBuilder, Services.Sync.OperationCommentBuilderService>();
 
         return services;
     }
