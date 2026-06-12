@@ -7,6 +7,7 @@ namespace TerraformApi.Mcp.Tests.Tools;
 public class ValidateToolTests
 {
     private readonly IApimNamingValidator _validator;
+    private readonly HttpClient _httpClient = new();
 
     private const string ValidOpenApi = """
         {
@@ -42,27 +43,27 @@ public class ValidateToolTests
     }
 
     [Fact]
-    public void Validate_ValidSpec_ReturnsValid()
+    public async Task Validate_ValidSpec_ReturnsValid()
     {
-        var result = ValidateTool.Validate(_validator, ValidOpenApi);
+        var result = await ValidateTool.Validate(_httpClient, _validator, openApiJson: ValidOpenApi);
 
         Assert.Contains("Result: VALID", result);
         Assert.Contains("All naming rules pass", result);
     }
 
     [Fact]
-    public void Validate_ValidSpec_ShowsApiTitle()
+    public async Task Validate_ValidSpec_ShowsApiTitle()
     {
-        var result = ValidateTool.Validate(_validator, ValidOpenApi);
+        var result = await ValidateTool.Validate(_httpClient, _validator, openApiJson: ValidOpenApi);
 
         Assert.Contains("API Title: Order API", result);
         Assert.Contains("API Version: 1.0.0", result);
     }
 
     [Fact]
-    public void Validate_ValidSpec_ListsAllOperations()
+    public async Task Validate_ValidSpec_ListsAllOperations()
     {
-        var result = ValidateTool.Validate(_validator, ValidOpenApi);
+        var result = await ValidateTool.Validate(_httpClient, _validator, openApiJson: ValidOpenApi);
 
         Assert.Contains("Operations (3):", result);
         Assert.Contains("GET", result);
@@ -72,9 +73,9 @@ public class ValidateToolTests
     }
 
     [Fact]
-    public void Validate_ValidSpec_ShowsOperationIds()
+    public async Task Validate_ValidSpec_ShowsOperationIds()
     {
-        var result = ValidateTool.Validate(_validator, ValidOpenApi, environment: "dev");
+        var result = await ValidateTool.Validate(_httpClient, _validator, openApiJson: ValidOpenApi, environment: "dev");
 
         Assert.Contains("listorders-dev", result.ToLowerInvariant());
         Assert.Contains("createorder-dev", result.ToLowerInvariant());
@@ -82,25 +83,25 @@ public class ValidateToolTests
     }
 
     [Fact]
-    public void Validate_ValidSpec_MarksOperationsAsOk()
+    public async Task Validate_ValidSpec_MarksOperationsAsOk()
     {
-        var result = ValidateTool.Validate(_validator, ValidOpenApi);
+        var result = await ValidateTool.Validate(_httpClient, _validator, openApiJson: ValidOpenApi);
 
         Assert.Contains("[OK]", result);
         Assert.DoesNotContain("[INVALID]", result);
     }
 
     [Fact]
-    public void Validate_InvalidJson_ReturnsFailedMessage()
+    public async Task Validate_InvalidJson_ReturnsFailedMessage()
     {
-        var result = ValidateTool.Validate(_validator, "{totally broken json!!");
+        var result = await ValidateTool.Validate(_httpClient, _validator, openApiJson: "{totally broken json!!");
 
         Assert.Contains("VALIDATION FAILED", result);
         Assert.Contains("Errors:", result);
     }
 
     [Fact]
-    public void Validate_EmptyPaths_ReturnsValidWithZeroOperations()
+    public async Task Validate_EmptyPaths_ReturnsValidWithZeroOperations()
     {
         var emptyPathsApi = """
             {
@@ -110,31 +111,31 @@ public class ValidateToolTests
             }
             """;
 
-        var result = ValidateTool.Validate(_validator, emptyPathsApi);
+        var result = await ValidateTool.Validate(_httpClient, _validator, openApiJson: emptyPathsApi);
 
         Assert.Contains("Operations (0):", result);
         Assert.Contains("Result: VALID", result);
     }
 
     [Fact]
-    public void Validate_DifferentEnvironment_UsesEnvironmentInOperationIds()
+    public async Task Validate_DifferentEnvironment_UsesEnvironmentInOperationIds()
     {
-        var result = ValidateTool.Validate(_validator, ValidOpenApi, environment: "staging");
+        var result = await ValidateTool.Validate(_httpClient, _validator, openApiJson: ValidOpenApi, environment: "staging");
 
         Assert.Contains("listorders-staging", result.ToLowerInvariant());
         Assert.Contains("createorder-staging", result.ToLowerInvariant());
     }
 
     [Fact]
-    public void Validate_DefaultEnvironment_UsesDev()
+    public async Task Validate_DefaultEnvironment_UsesDev()
     {
-        var result = ValidateTool.Validate(_validator, ValidOpenApi);
+        var result = await ValidateTool.Validate(_httpClient, _validator, openApiJson: ValidOpenApi);
 
         Assert.Contains("listorders-dev", result.ToLowerInvariant());
     }
 
     [Fact]
-    public void Validate_OperationWithoutOperationId_FallsBackToMethodAndPath()
+    public async Task Validate_OperationWithoutOperationId_FallsBackToMethodAndPath()
     {
         var noOpIdApi = """
             {
@@ -151,7 +152,7 @@ public class ValidateToolTests
             }
             """;
 
-        var result = ValidateTool.Validate(_validator, noOpIdApi);
+        var result = await ValidateTool.Validate(_httpClient, _validator, openApiJson: noOpIdApi);
 
         Assert.Contains("Operations (1):", result);
         Assert.Contains("GET", result);
@@ -159,7 +160,7 @@ public class ValidateToolTests
     }
 
     [Fact]
-    public void Validate_MultipleHttpMethods_AllDetected()
+    public async Task Validate_MultipleHttpMethods_AllDetected()
     {
         var multiMethodApi = """
             {
@@ -192,12 +193,20 @@ public class ValidateToolTests
             }
             """;
 
-        var result = ValidateTool.Validate(_validator, multiMethodApi);
+        var result = await ValidateTool.Validate(_httpClient, _validator, openApiJson: multiMethodApi);
 
         Assert.Contains("Operations (4):", result);
         Assert.Contains("GET", result);
         Assert.Contains("PUT", result);
         Assert.Contains("DELETE", result);
         Assert.Contains("PATCH", result);
+    }
+
+    [Fact]
+    public async Task Validate_NeitherJsonNorUrl_ReturnsError()
+    {
+        var result = await ValidateTool.Validate(_httpClient, _validator);
+
+        Assert.Contains("failed", result, StringComparison.OrdinalIgnoreCase);
     }
 }

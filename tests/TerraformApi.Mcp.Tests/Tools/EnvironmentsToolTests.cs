@@ -1,55 +1,36 @@
+using TerraformApi.Domain.Models;
 using TerraformApi.Mcp.Tools;
 
 namespace TerraformApi.Mcp.Tests.Tools;
 
 /// <summary>
 /// Tests for the EnvironmentsTool MCP tool.
-/// Uses temporary files to simulate appsettings.json in various states,
-/// calling the internal ListEnvironmentsFromPath to bypass file-discovery logic.
+/// Uses the internal FormatEnvironments method with in-memory dictionaries
+/// to test formatting logic without file I/O.
 /// </summary>
-public class EnvironmentsToolTests : IDisposable
+public class EnvironmentsToolTests
 {
-    private readonly string _tempDir;
-
-    public EnvironmentsToolTests()
+    private static Dictionary<string, ApimEnvironmentConfig> CreateDevProdConfig() => new()
     {
-        _tempDir = Path.Combine(Path.GetTempPath(), $"mcp-env-tests-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_tempDir);
-    }
-
-    public void Dispose()
-    {
-        try { Directory.Delete(_tempDir, recursive: true); } catch { /* best-effort cleanup */ }
-    }
-
-    private string WriteAppsettings(string json)
-    {
-        var path = Path.Combine(_tempDir, $"appsettings-{Guid.NewGuid():N}.json");
-        File.WriteAllText(path, json);
-        return path;
-    }
+        ["dev"] = new ApimEnvironmentConfig
+        {
+            StageGroupName = "rg-apim-dev",
+            ApimName = "apim-company-dev",
+            ApiGatewayHost = "api-dev.company.com"
+        },
+        ["prod"] = new ApimEnvironmentConfig
+        {
+            StageGroupName = "rg-apim-prod",
+            ApimName = "apim-company-prod",
+            ApiGatewayHost = "api.company.com"
+        }
+    };
 
     [Fact]
-    public void ListEnvironments_WithValidConfig_ListsAllEnvironments()
+    public void FormatEnvironments_WithValidConfig_ListsAllEnvironments()
     {
-        var path = WriteAppsettings("""
-            {
-              "ApimEnvironments": {
-                "dev": {
-                  "StageGroupName": "rg-apim-dev",
-                  "ApimName": "apim-company-dev",
-                  "ApiGatewayHost": "api-dev.company.com"
-                },
-                "prod": {
-                  "StageGroupName": "rg-apim-prod",
-                  "ApimName": "apim-company-prod",
-                  "ApiGatewayHost": "api.company.com"
-                }
-              }
-            }
-            """);
-
-        var result = EnvironmentsTool.ListEnvironmentsFromPath(path);
+        var environments = CreateDevProdConfig();
+        var result = EnvironmentsTool.FormatEnvironments(environments);
 
         Assert.Contains("Available APIM Environment Presets:", result);
         Assert.Contains("[dev]", result);
@@ -59,24 +40,10 @@ public class EnvironmentsToolTests : IDisposable
     }
 
     [Fact]
-    public void ListEnvironments_SpecificEnvironment_ReturnsOnlyThatEnvironment()
+    public void FormatEnvironments_SpecificEnvironment_ReturnsOnlyThatEnvironment()
     {
-        var path = WriteAppsettings("""
-            {
-              "ApimEnvironments": {
-                "dev": {
-                  "StageGroupName": "rg-apim-dev",
-                  "ApimName": "apim-company-dev"
-                },
-                "prod": {
-                  "StageGroupName": "rg-apim-prod",
-                  "ApimName": "apim-company-prod"
-                }
-              }
-            }
-            """);
-
-        var result = EnvironmentsTool.ListEnvironmentsFromPath(path, environmentName: "dev");
+        var environments = CreateDevProdConfig();
+        var result = EnvironmentsTool.FormatEnvironments(environments, environmentName: "dev");
 
         Assert.Contains("Environment: dev", result);
         Assert.Contains("[dev]", result);
@@ -85,18 +52,15 @@ public class EnvironmentsToolTests : IDisposable
     }
 
     [Fact]
-    public void ListEnvironments_NonexistentEnvironment_ReturnsNotFoundWithAvailable()
+    public void FormatEnvironments_NonexistentEnvironment_ReturnsNotFoundWithAvailable()
     {
-        var path = WriteAppsettings("""
-            {
-              "ApimEnvironments": {
-                "dev": { "ApimName": "apim-dev" },
-                "staging": { "ApimName": "apim-staging" }
-              }
-            }
-            """);
+        var environments = new Dictionary<string, ApimEnvironmentConfig>
+        {
+            ["dev"] = new() { ApimName = "apim-dev" },
+            ["staging"] = new() { ApimName = "apim-staging" }
+        };
 
-        var result = EnvironmentsTool.ListEnvironmentsFromPath(path, environmentName: "prod");
+        var result = EnvironmentsTool.FormatEnvironments(environments, environmentName: "prod");
 
         Assert.Contains("not found", result);
         Assert.Contains("dev", result);
@@ -104,80 +68,58 @@ public class EnvironmentsToolTests : IDisposable
     }
 
     [Fact]
-    public void ListEnvironments_NoApimEnvironmentsSection_ReturnsHelpfulMessage()
+    public void FormatEnvironments_EmptyDictionary_ReturnsNotConfiguredMessage()
     {
-        var path = WriteAppsettings("""
-            {
-              "Logging": { "LogLevel": { "Default": "Warning" } }
-            }
-            """);
+        var result = EnvironmentsTool.FormatEnvironments([]);
 
-        var result = EnvironmentsTool.ListEnvironmentsFromPath(path);
-
-        Assert.Contains("No 'ApimEnvironments' section", result);
+        Assert.Contains("No environment presets configured", result);
     }
 
     [Fact]
-    public void ListEnvironments_NullPath_ReturnsNotConfiguredMessage()
+    public void FormatEnvironments_BooleanValues_FormattedCorrectly()
     {
-        var result = EnvironmentsTool.ListEnvironmentsFromPath(null);
-
-        Assert.Contains("No appsettings.json found", result);
-        Assert.Contains("not configured", result);
-    }
-
-    [Fact]
-    public void ListEnvironments_BooleanValues_FormattedCorrectly()
-    {
-        var path = WriteAppsettings("""
+        var environments = new Dictionary<string, ApimEnvironmentConfig>
+        {
+            ["dev"] = new()
             {
-              "ApimEnvironments": {
-                "dev": {
-                  "SubscriptionRequired": false,
-                  "IncludeCorsPolicy": true
-                }
-              }
+                SubscriptionRequired = false,
+                IncludeCorsPolicy = true
             }
-            """);
+        };
 
-        var result = EnvironmentsTool.ListEnvironmentsFromPath(path, environmentName: "dev");
+        var result = EnvironmentsTool.FormatEnvironments(environments, environmentName: "dev");
 
         Assert.Contains("SubscriptionRequired: false", result);
         Assert.Contains("IncludeCorsPolicy: true", result);
     }
 
     [Fact]
-    public void ListEnvironments_ArrayValues_FormattedAsCommaSeparated()
+    public void FormatEnvironments_ArrayValues_FormattedAsCommaSeparated()
     {
-        var path = WriteAppsettings("""
+        var environments = new Dictionary<string, ApimEnvironmentConfig>
+        {
+            ["dev"] = new()
             {
-              "ApimEnvironments": {
-                "dev": {
-                  "AllowedMethods": ["GET", "POST", "PUT", "DELETE"]
-                }
-              }
+                AllowedMethods = ["GET", "POST", "PUT", "DELETE"]
             }
-            """);
+        };
 
-        var result = EnvironmentsTool.ListEnvironmentsFromPath(path, environmentName: "dev");
+        var result = EnvironmentsTool.FormatEnvironments(environments, environmentName: "dev");
 
         Assert.Contains("AllowedMethods: GET, POST, PUT, DELETE", result);
     }
 
     [Fact]
-    public void ListEnvironments_MultipleEnvironments_AllPresent()
+    public void FormatEnvironments_MultipleEnvironments_AllPresent()
     {
-        var path = WriteAppsettings("""
-            {
-              "ApimEnvironments": {
-                "dev": { "ApimName": "apim-dev" },
-                "staging": { "ApimName": "apim-staging" },
-                "prod": { "ApimName": "apim-prod" }
-              }
-            }
-            """);
+        var environments = new Dictionary<string, ApimEnvironmentConfig>
+        {
+            ["dev"] = new() { ApimName = "apim-dev" },
+            ["staging"] = new() { ApimName = "apim-staging" },
+            ["prod"] = new() { ApimName = "apim-prod" }
+        };
 
-        var result = EnvironmentsTool.ListEnvironmentsFromPath(path);
+        var result = EnvironmentsTool.FormatEnvironments(environments);
 
         Assert.Contains("[dev]", result);
         Assert.Contains("[staging]", result);
@@ -188,78 +130,57 @@ public class EnvironmentsToolTests : IDisposable
     }
 
     [Fact]
-    public void ListEnvironments_EmptyEnvironments_ShowsHeaderOnly()
+    public void FormatEnvironments_EnvironmentWithAllFieldTypes_FormatsEachCorrectly()
     {
-        var path = WriteAppsettings("""
+        var environments = new Dictionary<string, ApimEnvironmentConfig>
+        {
+            ["dev"] = new()
             {
-              "ApimEnvironments": {}
+                StageGroupName = "rg-apim-dev",
+                ApimName = "apim-company-dev",
+                ApiGatewayHost = "api-dev.company.com",
+                FrontendHost = "portal",
+                CompanyDomain = "company.com",
+                LocalDevHost = "localhost",
+                LocalDevPort = "3000",
+                SubscriptionRequired = false,
+                IncludeCorsPolicy = true,
+                AllowedMethods = ["GET", "POST"]
             }
-            """);
+        };
 
-        var result = EnvironmentsTool.ListEnvironmentsFromPath(path);
-
-        Assert.Contains("Available APIM Environment Presets:", result);
-        Assert.DoesNotContain("[dev]", result);
-    }
-
-    [Fact]
-    public void ListEnvironments_InvalidJson_ReturnsErrorMessage()
-    {
-        var path = Path.Combine(_tempDir, "broken.json");
-        File.WriteAllText(path, "{broken json!!");
-
-        var result = EnvironmentsTool.ListEnvironmentsFromPath(path);
-
-        Assert.Contains("Failed to load environment presets:", result);
-    }
-
-    [Fact]
-    public void ListEnvironments_EnvironmentWithAllFieldTypes_FormatsEachCorrectly()
-    {
-        var path = WriteAppsettings("""
-            {
-              "ApimEnvironments": {
-                "dev": {
-                  "StageGroupName": "rg-apim-dev",
-                  "ApimName": "apim-company-dev",
-                  "ApiGatewayHost": "api-dev.company.com",
-                  "SubscriptionRequired": false,
-                  "IncludeCorsPolicy": true,
-                  "AllowedMethods": ["GET", "POST"]
-                }
-              }
-            }
-            """);
-
-        var result = EnvironmentsTool.ListEnvironmentsFromPath(path, environmentName: "dev");
+        var result = EnvironmentsTool.FormatEnvironments(environments, environmentName: "dev");
 
         Assert.Contains("StageGroupName: rg-apim-dev", result);
         Assert.Contains("ApimName: apim-company-dev", result);
         Assert.Contains("ApiGatewayHost: api-dev.company.com", result);
+        Assert.Contains("FrontendHost: portal", result);
+        Assert.Contains("CompanyDomain: company.com", result);
+        Assert.Contains("LocalDevHost: localhost", result);
+        Assert.Contains("LocalDevPort: 3000", result);
         Assert.Contains("SubscriptionRequired: false", result);
         Assert.Contains("IncludeCorsPolicy: true", result);
         Assert.Contains("AllowedMethods: GET, POST", result);
     }
 
     [Fact]
-    public void FindAppsettingsPath_ReturnsNonNull_WhenProjectConfigExists()
+    public void FormatEnvironments_NullOptionalFields_OmitsThemFromOutput()
     {
-        // The MCP project's appsettings.json gets copied to the test bin directory,
-        // so FindAppsettingsPath should always find it in the test environment.
-        var path = EnvironmentsTool.FindAppsettingsPath();
+        var environments = new Dictionary<string, ApimEnvironmentConfig>
+        {
+            ["dev"] = new()
+            {
+                ApimName = "apim-dev"
+                // All other fields are null/default
+            }
+        };
 
-        Assert.NotNull(path);
-        Assert.True(File.Exists(path));
-    }
+        var result = EnvironmentsTool.FormatEnvironments(environments, environmentName: "dev");
 
-    [Fact]
-    public void ListEnvironments_ViaPublicApi_ReturnsContent()
-    {
-        // Test the public API (uses FindAppsettingsPath internally).
-        // In the test environment, the MCP project's appsettings.json is in the bin directory.
-        var result = EnvironmentsTool.ListEnvironments();
-
-        // Should find the appsettings.json and return some content
-        Assert.DoesNotContain("No appsettings.json found", result);
+        Assert.Contains("ApimName: apim-dev", result);
+        Assert.DoesNotContain("FrontendHost:", result);
+        Assert.DoesNotContain("CompanyDomain:", result);
+        Assert.DoesNotContain("LocalDevHost:", result);
+        Assert.DoesNotContain("LocalDevPort:", result);
     }
 }

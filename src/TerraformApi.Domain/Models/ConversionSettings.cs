@@ -20,7 +20,7 @@ public sealed record ConversionSettings
     public string? LocalDevHost { get; init; }
     public string? LocalDevPort { get; init; }
     public bool SubscriptionRequired { get; init; }
-    public bool IncludeCorsPolicy { get; init; } = true;
+    public bool IncludeCorsPolicy { get; init; }
     public string? OperationPrefix { get; init; }
     public List<string> AllowedOrigins { get; init; } = [];
     public List<string> AllowedMethods { get; init; } = ["GET", "POST", "PUT", "DELETE", "OPTIONS"];

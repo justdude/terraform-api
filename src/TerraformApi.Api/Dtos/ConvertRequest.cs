@@ -4,8 +4,15 @@ namespace TerraformApi.Api.Dtos;
 
 public class ConvertRequest
 {
-    [Required]
-    public required string OpenApiJson { get; init; }
+    /// <summary>
+    /// The OpenAPI specification JSON string. Required unless OpenApiUrl is provided.
+    /// </summary>
+    public string? OpenApiJson { get; init; }
+
+    /// <summary>
+    /// URL to fetch the OpenAPI specification from. Used if OpenApiJson is not provided.
+    /// </summary>
+    public string? OpenApiUrl { get; init; }
 
     [Required]
     public required string Environment { get; init; }
@@ -43,7 +50,7 @@ public class ConvertRequest
     public string? LocalDevHost { get; init; }
     public string? LocalDevPort { get; init; }
     public bool SubscriptionRequired { get; init; }
-    public bool IncludeCorsPolicy { get; init; } = true;
+    public bool IncludeCorsPolicy { get; init; }
     public string? OperationPrefix { get; init; }
     public List<string> AllowedOrigins { get; init; } = [];
     public List<string> AllowedMethods { get; init; } = ["GET", "POST", "PUT", "DELETE", "OPTIONS"];

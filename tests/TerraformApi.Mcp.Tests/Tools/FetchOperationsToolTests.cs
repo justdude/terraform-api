@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using TerraformApi.Application.Services;
 using TerraformApi.Mcp.Tools;
 
 namespace TerraformApi.Mcp.Tests.Tools;
@@ -11,10 +12,7 @@ namespace TerraformApi.Mcp.Tests.Tools;
 /// </summary>
 public class FetchOperationsToolTests
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true
-    };
+    private readonly OpenApiOperationsFetcherService _fetcher = new();
 
     private const string ValidPetStoreSpec = """
         {
@@ -101,7 +99,7 @@ public class FetchOperationsToolTests
     [Fact]
     public void ParseAndFormat_ValidSpec_ReturnsAllOperations()
     {
-        var result = FetchOperationsTool.ParseAndFormat(ValidPetStoreSpec);
+        var result = FetchOperationsTool.ParseAndFormat(_fetcher, ValidPetStoreSpec);
         using var doc = JsonDocument.Parse(result);
 
         Assert.Equal(4, doc.RootElement.GetProperty("totalOperations").GetInt32());
@@ -110,7 +108,7 @@ public class FetchOperationsToolTests
     [Fact]
     public void ParseAndFormat_ValidSpec_ContainsApiInfo()
     {
-        var result = FetchOperationsTool.ParseAndFormat(ValidPetStoreSpec, "https://example.com/swagger.json");
+        var result = FetchOperationsTool.ParseAndFormat(_fetcher, ValidPetStoreSpec, "https://example.com/swagger.json");
         using var doc = JsonDocument.Parse(result);
 
         var api = doc.RootElement.GetProperty("api");
@@ -122,7 +120,7 @@ public class FetchOperationsToolTests
     [Fact]
     public void ParseAndFormat_ValidSpec_OperationsHaveCorrectMethods()
     {
-        var result = FetchOperationsTool.ParseAndFormat(ValidPetStoreSpec);
+        var result = FetchOperationsTool.ParseAndFormat(_fetcher, ValidPetStoreSpec);
         using var doc = JsonDocument.Parse(result);
 
         var ops = doc.RootElement.GetProperty("operations");
@@ -139,7 +137,7 @@ public class FetchOperationsToolTests
     [Fact]
     public void ParseAndFormat_ValidSpec_OperationsHaveUrlTemplates()
     {
-        var result = FetchOperationsTool.ParseAndFormat(ValidPetStoreSpec);
+        var result = FetchOperationsTool.ParseAndFormat(_fetcher, ValidPetStoreSpec);
         using var doc = JsonDocument.Parse(result);
 
         var ops = doc.RootElement.GetProperty("operations");
@@ -154,7 +152,7 @@ public class FetchOperationsToolTests
     [Fact]
     public void ParseAndFormat_ValidSpec_OperationsHaveOperationIds()
     {
-        var result = FetchOperationsTool.ParseAndFormat(ValidPetStoreSpec);
+        var result = FetchOperationsTool.ParseAndFormat(_fetcher, ValidPetStoreSpec);
         using var doc = JsonDocument.Parse(result);
 
         var ops = doc.RootElement.GetProperty("operations");
@@ -171,7 +169,7 @@ public class FetchOperationsToolTests
     [Fact]
     public void ParseAndFormat_ValidSpec_ParametersIncluded()
     {
-        var result = FetchOperationsTool.ParseAndFormat(ValidPetStoreSpec);
+        var result = FetchOperationsTool.ParseAndFormat(_fetcher, ValidPetStoreSpec);
         using var doc = JsonDocument.Parse(result);
 
         var listPetsOp = doc.RootElement.GetProperty("operations")
@@ -191,7 +189,7 @@ public class FetchOperationsToolTests
     [Fact]
     public void ParseAndFormat_ValidSpec_PathParametersIncluded()
     {
-        var result = FetchOperationsTool.ParseAndFormat(ValidPetStoreSpec);
+        var result = FetchOperationsTool.ParseAndFormat(_fetcher, ValidPetStoreSpec);
         using var doc = JsonDocument.Parse(result);
 
         var getPetOp = doc.RootElement.GetProperty("operations")
@@ -209,7 +207,7 @@ public class FetchOperationsToolTests
     [Fact]
     public void ParseAndFormat_ValidSpec_TagsIncluded()
     {
-        var result = FetchOperationsTool.ParseAndFormat(ValidPetStoreSpec);
+        var result = FetchOperationsTool.ParseAndFormat(_fetcher, ValidPetStoreSpec);
         using var doc = JsonDocument.Parse(result);
 
         var deleteOp = doc.RootElement.GetProperty("operations")
@@ -227,7 +225,7 @@ public class FetchOperationsToolTests
     [Fact]
     public void ParseAndFormat_ValidSpec_RequestBodyTypesIncluded()
     {
-        var result = FetchOperationsTool.ParseAndFormat(ValidPetStoreSpec);
+        var result = FetchOperationsTool.ParseAndFormat(_fetcher, ValidPetStoreSpec);
         using var doc = JsonDocument.Parse(result);
 
         var createOp = doc.RootElement.GetProperty("operations")
@@ -241,7 +239,7 @@ public class FetchOperationsToolTests
     [Fact]
     public void ParseAndFormat_ValidSpec_ResponseCodesIncluded()
     {
-        var result = FetchOperationsTool.ParseAndFormat(ValidPetStoreSpec);
+        var result = FetchOperationsTool.ParseAndFormat(_fetcher, ValidPetStoreSpec);
         using var doc = JsonDocument.Parse(result);
 
         var listOp = doc.RootElement.GetProperty("operations")
@@ -259,7 +257,7 @@ public class FetchOperationsToolTests
     [Fact]
     public void ParseAndFormat_InvalidJson_ReturnsError()
     {
-        var result = FetchOperationsTool.ParseAndFormat("{broken json!!");
+        var result = FetchOperationsTool.ParseAndFormat(_fetcher, "{broken json!!");
         using var doc = JsonDocument.Parse(result);
 
         Assert.True(doc.RootElement.TryGetProperty("error", out _));
@@ -276,7 +274,7 @@ public class FetchOperationsToolTests
             }
             """;
 
-        var result = FetchOperationsTool.ParseAndFormat(spec);
+        var result = FetchOperationsTool.ParseAndFormat(_fetcher, spec);
         using var doc = JsonDocument.Parse(result);
 
         Assert.True(doc.RootElement.TryGetProperty("error", out _));
@@ -299,7 +297,7 @@ public class FetchOperationsToolTests
             }
             """;
 
-        var result = FetchOperationsTool.ParseAndFormat(spec);
+        var result = FetchOperationsTool.ParseAndFormat(_fetcher, spec);
         using var doc = JsonDocument.Parse(result);
 
         Assert.Equal(1, doc.RootElement.GetProperty("totalOperations").GetInt32());
@@ -315,7 +313,7 @@ public class FetchOperationsToolTests
     public async Task FetchOperationsCore_EmptyUrl_ReturnsError()
     {
         using var client = new HttpClient();
-        var result = await FetchOperationsTool.FetchOperationsCore(client, "");
+        var result = await FetchOperationsTool.FetchOperationsCore(client, _fetcher, "");
 
         using var doc = JsonDocument.Parse(result);
         Assert.True(doc.RootElement.TryGetProperty("error", out var error));
@@ -326,7 +324,7 @@ public class FetchOperationsToolTests
     public async Task FetchOperationsCore_InvalidUrl_ReturnsError()
     {
         using var client = new HttpClient();
-        var result = await FetchOperationsTool.FetchOperationsCore(client, "not-a-url");
+        var result = await FetchOperationsTool.FetchOperationsCore(client, _fetcher, "not-a-url");
 
         using var doc = JsonDocument.Parse(result);
         Assert.True(doc.RootElement.TryGetProperty("error", out var error));
@@ -337,7 +335,7 @@ public class FetchOperationsToolTests
     public async Task FetchOperationsCore_FtpScheme_ReturnsError()
     {
         using var client = new HttpClient();
-        var result = await FetchOperationsTool.FetchOperationsCore(client, "ftp://example.com/spec.json");
+        var result = await FetchOperationsTool.FetchOperationsCore(client, _fetcher, "ftp://example.com/spec.json");
 
         using var doc = JsonDocument.Parse(result);
         Assert.True(doc.RootElement.TryGetProperty("error", out _));
@@ -349,7 +347,7 @@ public class FetchOperationsToolTests
         var handler = new MockHttpHandler(ValidPetStoreSpec);
         var client = new HttpClient(handler);
 
-        var result = await FetchOperationsTool.FetchOperationsCore(client, "https://example.com/swagger.json");
+        var result = await FetchOperationsTool.FetchOperationsCore(client, _fetcher, "https://example.com/swagger.json");
 
         using var doc = JsonDocument.Parse(result);
         Assert.Equal(4, doc.RootElement.GetProperty("totalOperations").GetInt32());
@@ -362,7 +360,7 @@ public class FetchOperationsToolTests
         var handler = new MockHttpHandler(statusCode: HttpStatusCode.NotFound);
         var client = new HttpClient(handler);
 
-        var result = await FetchOperationsTool.FetchOperationsCore(client, "https://example.com/swagger.json");
+        var result = await FetchOperationsTool.FetchOperationsCore(client, _fetcher, "https://example.com/swagger.json");
 
         using var doc = JsonDocument.Parse(result);
         Assert.True(doc.RootElement.TryGetProperty("error", out _));

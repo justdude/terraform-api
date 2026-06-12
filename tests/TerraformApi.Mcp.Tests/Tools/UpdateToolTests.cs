@@ -7,6 +7,7 @@ namespace TerraformApi.Mcp.Tests.Tools;
 public class UpdateToolTests
 {
     private readonly IConversionOrchestrator _orchestrator;
+    private readonly HttpClient _httpClient = new();
 
     private const string InitialOpenApi = """
         {
@@ -54,9 +55,10 @@ public class UpdateToolTests
         _orchestrator = new ConversionOrchestratorService(parser, generator, merger, validator);
     }
 
-    private string GenerateInitialTerraform()
+    private async Task<string> GenerateInitialTerraform()
     {
-        return ConvertTool.Convert(
+        return await ConvertTool.Convert(
+            _httpClient,
             _orchestrator,
             openApiJson: InitialOpenApi,
             environment: "dev",
@@ -70,16 +72,16 @@ public class UpdateToolTests
     }
 
     [Fact]
-    public void Update_ValidInput_ReturnsMergedTerraform()
+    public async Task Update_ValidInput_ReturnsMergedTerraform()
     {
-        var existingTf = GenerateInitialTerraform();
-        // Strip the summary comment so it's clean HCL
+        var existingTf = await GenerateInitialTerraform();
         var tfOnly = existingTf.Split("\n\n// Summary:")[0];
 
-        var result = UpdateTool.Update(
+        var result = await UpdateTool.Update(
+            _httpClient,
             _orchestrator,
-            openApiJson: UpdatedOpenApi,
             existingTerraform: tfOnly,
+            openApiJson: UpdatedOpenApi,
             environment: "dev",
             apiGroupName: "user-api-group",
             stageGroupName: "rg-apim-dev",
@@ -95,15 +97,16 @@ public class UpdateToolTests
     }
 
     [Fact]
-    public void Update_AddsNewOperation_PresentInOutput()
+    public async Task Update_AddsNewOperation_PresentInOutput()
     {
-        var existingTf = GenerateInitialTerraform();
+        var existingTf = await GenerateInitialTerraform();
         var tfOnly = existingTf.Split("\n\n// Summary:")[0];
 
-        var result = UpdateTool.Update(
+        var result = await UpdateTool.Update(
+            _httpClient,
             _orchestrator,
-            openApiJson: UpdatedOpenApi,
             existingTerraform: tfOnly,
+            openApiJson: UpdatedOpenApi,
             environment: "dev",
             apiGroupName: "user-api-group",
             stageGroupName: "rg-apim-dev",
@@ -119,12 +122,13 @@ public class UpdateToolTests
     }
 
     [Fact]
-    public void Update_InvalidJson_ReturnsFailureMessage()
+    public async Task Update_InvalidJson_ReturnsFailureMessage()
     {
-        var result = UpdateTool.Update(
+        var result = await UpdateTool.Update(
+            _httpClient,
             _orchestrator,
-            openApiJson: "not valid json",
             existingTerraform: "some-group = { }",
+            openApiJson: "not valid json",
             environment: "dev",
             apiGroupName: "user-api-group",
             stageGroupName: "rg-apim-dev",
@@ -138,15 +142,16 @@ public class UpdateToolTests
     }
 
     [Fact]
-    public void Update_InvalidResourceGroup_ReturnsFailureMessage()
+    public async Task Update_InvalidResourceGroup_ReturnsFailureMessage()
     {
-        var existingTf = GenerateInitialTerraform();
+        var existingTf = await GenerateInitialTerraform();
         var tfOnly = existingTf.Split("\n\n// Summary:")[0];
 
-        var result = UpdateTool.Update(
+        var result = await UpdateTool.Update(
+            _httpClient,
             _orchestrator,
-            openApiJson: UpdatedOpenApi,
             existingTerraform: tfOnly,
+            openApiJson: UpdatedOpenApi,
             environment: "dev",
             apiGroupName: "user-api-group",
             stageGroupName: "bad group name!!",
@@ -160,15 +165,16 @@ public class UpdateToolTests
     }
 
     [Fact]
-    public void Update_WithCors_IncludesCorsInMergedOutput()
+    public async Task Update_WithCors_IncludesCorsInMergedOutput()
     {
-        var existingTf = GenerateInitialTerraform();
+        var existingTf = await GenerateInitialTerraform();
         var tfOnly = existingTf.Split("\n\n// Summary:")[0];
 
-        var result = UpdateTool.Update(
+        var result = await UpdateTool.Update(
+            _httpClient,
             _orchestrator,
-            openApiJson: UpdatedOpenApi,
             existingTerraform: tfOnly,
+            openApiJson: UpdatedOpenApi,
             environment: "dev",
             apiGroupName: "user-api-group",
             stageGroupName: "rg-apim-dev",
@@ -186,15 +192,16 @@ public class UpdateToolTests
     }
 
     [Fact]
-    public void Update_SameSpec_ProducesSameOutput()
+    public async Task Update_SameSpec_ProducesSameOutput()
     {
-        var existingTf = GenerateInitialTerraform();
+        var existingTf = await GenerateInitialTerraform();
         var tfOnly = existingTf.Split("\n\n// Summary:")[0];
 
-        var result = UpdateTool.Update(
+        var result = await UpdateTool.Update(
+            _httpClient,
             _orchestrator,
-            openApiJson: InitialOpenApi,
             existingTerraform: tfOnly,
+            openApiJson: InitialOpenApi,
             environment: "dev",
             apiGroupName: "user-api-group",
             stageGroupName: "rg-apim-dev",
@@ -207,5 +214,44 @@ public class UpdateToolTests
         Assert.Contains("user-api-group = {", result);
         Assert.Contains("listusers", result.ToLowerInvariant());
         Assert.Contains("1 operations", result);
+    }
+
+    [Fact]
+    public async Task Update_EmptyExistingTerraform_ReturnsError()
+    {
+        var result = await UpdateTool.Update(
+            _httpClient,
+            _orchestrator,
+            existingTerraform: "",
+            openApiJson: InitialOpenApi,
+            environment: "dev",
+            apiGroupName: "user-api-group",
+            stageGroupName: "rg-apim-dev",
+            apimName: "apim-company-dev",
+            apiPathPrefix: "users",
+            apiPathSuffix: "api",
+            apiGatewayHost: "api.dev.company.com",
+            backendServicePath: "user-service");
+
+        Assert.Contains("Existing Terraform configuration is required", result);
+    }
+
+    [Fact]
+    public async Task Update_NeitherJsonNorUrl_ReturnsError()
+    {
+        var result = await UpdateTool.Update(
+            _httpClient,
+            _orchestrator,
+            existingTerraform: "some-group = { }",
+            environment: "dev",
+            apiGroupName: "user-api-group",
+            stageGroupName: "rg-apim-dev",
+            apimName: "apim-company-dev",
+            apiPathPrefix: "users",
+            apiPathSuffix: "api",
+            apiGatewayHost: "api.dev.company.com",
+            backendServicePath: "user-service");
+
+        Assert.Contains("error", result, StringComparison.OrdinalIgnoreCase);
     }
 }

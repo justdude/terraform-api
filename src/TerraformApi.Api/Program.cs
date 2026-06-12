@@ -10,6 +10,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.Configure<Dictionary<string, ApimEnvironmentConfig>>(
     builder.Configuration.GetSection("ApimEnvironments"));
 
+builder.Services.AddHttpClient();
 builder.Services.AddApplicationServices();
 
 // CORS: restrict origins in production, open in development

@@ -40,68 +40,78 @@ public static class TransformEnvironmentTool
         [Description("Target local dev port for CORS (e.g. '3000')")] string? targetLocalDevPort = null,
         [Description("Override subscription_required for the target environment")] bool? targetSubscriptionRequired = null)
     {
-        var settings = new EnvironmentTransformSettings
+        try
         {
-            SourceEnvironment = sourceEnvironment,
-            TargetEnvironment = targetEnvironment,
-            TargetStageGroupName = targetStageGroupName,
-            TargetApimName = targetApimName,
-            TargetApiGatewayHost = targetApiGatewayHost,
-            TargetFrontendHost = targetFrontendHost,
-            TargetCompanyDomain = targetCompanyDomain,
-            TargetLocalDevHost = targetLocalDevHost,
-            TargetLocalDevPort = targetLocalDevPort,
-            TargetSubscriptionRequired = targetSubscriptionRequired
-        };
+            if (string.IsNullOrWhiteSpace(sourceTerraform))
+                return "Transform failed: Source Terraform content is required.";
 
-        var result = transformer.Transform(sourceTerraform, settings, existingTargetTerraform);
+            var settings = new EnvironmentTransformSettings
+            {
+                SourceEnvironment = sourceEnvironment,
+                TargetEnvironment = targetEnvironment,
+                TargetStageGroupName = targetStageGroupName,
+                TargetApimName = targetApimName,
+                TargetApiGatewayHost = targetApiGatewayHost,
+                TargetFrontendHost = targetFrontendHost,
+                TargetCompanyDomain = targetCompanyDomain,
+                TargetLocalDevHost = targetLocalDevHost,
+                TargetLocalDevPort = targetLocalDevPort,
+                TargetSubscriptionRequired = targetSubscriptionRequired
+            };
 
-        if (!result.Success)
-            return "Transform failed:\n" + string.Join("\n", result.Errors);
+            var result = transformer.Transform(sourceTerraform, settings, existingTargetTerraform);
 
-        var sb = new StringBuilder();
-        sb.Append(result.TransformedTerraform);
+            if (!result.Success)
+                return "Transform failed:\n" + string.Join("\n", result.Errors);
 
-        if (result.Warnings.Count > 0)
-        {
+            var sb = new StringBuilder();
+            sb.Append(result.TransformedTerraform);
+
+            if (result.Warnings.Count > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine();
+                sb.AppendLine("// Warnings:");
+                foreach (var w in result.Warnings)
+                    sb.AppendLine($"// - {w}");
+            }
+
+            // Append a human-readable change summary
             sb.AppendLine();
             sb.AppendLine();
-            sb.AppendLine("// Warnings:");
-            foreach (var w in result.Warnings)
-                sb.AppendLine($"// - {w}");
+            sb.AppendLine($"// Environment transform: {result.DetectedSourceEnvironment} -> {targetEnvironment}");
+
+            if (result.Summary != null)
+            {
+                sb.AppendLine($"// Total operations: {result.Summary.TotalOperations}");
+
+                if (result.Summary.SyncedOperations.Count > 0)
+                {
+                    sb.AppendLine($"// Synced ({result.Summary.SyncedOperations.Count}):");
+                    foreach (var op in result.Summary.SyncedOperations)
+                        sb.AppendLine($"//   {op}");
+                }
+
+                if (result.Summary.AddedOperations.Count > 0)
+                {
+                    sb.AppendLine($"// Added ({result.Summary.AddedOperations.Count}):");
+                    foreach (var op in result.Summary.AddedOperations)
+                        sb.AppendLine($"//   {op}");
+                }
+
+                if (result.Summary.PreservedOperations.Count > 0)
+                {
+                    sb.AppendLine($"// Preserved (target-only, {result.Summary.PreservedOperations.Count}):");
+                    foreach (var op in result.Summary.PreservedOperations)
+                        sb.AppendLine($"//   {op}");
+                }
+            }
+
+            return sb.ToString();
         }
-
-        // Append a human-readable change summary
-        sb.AppendLine();
-        sb.AppendLine();
-        sb.AppendLine($"// Environment transform: {result.DetectedSourceEnvironment} -> {targetEnvironment}");
-
-        if (result.Summary != null)
+        catch (Exception ex)
         {
-            sb.AppendLine($"// Total operations: {result.Summary.TotalOperations}");
-
-            if (result.Summary.SyncedOperations.Count > 0)
-            {
-                sb.AppendLine($"// Synced ({result.Summary.SyncedOperations.Count}):");
-                foreach (var op in result.Summary.SyncedOperations)
-                    sb.AppendLine($"//   {op}");
-            }
-
-            if (result.Summary.AddedOperations.Count > 0)
-            {
-                sb.AppendLine($"// Added ({result.Summary.AddedOperations.Count}):");
-                foreach (var op in result.Summary.AddedOperations)
-                    sb.AppendLine($"//   {op}");
-            }
-
-            if (result.Summary.PreservedOperations.Count > 0)
-            {
-                sb.AppendLine($"// Preserved (target-only, {result.Summary.PreservedOperations.Count}):");
-                foreach (var op in result.Summary.PreservedOperations)
-                    sb.AppendLine($"//   {op}");
-            }
+            return $"Transform error: {ex.Message}";
         }
-
-        return sb.ToString();
     }
 }

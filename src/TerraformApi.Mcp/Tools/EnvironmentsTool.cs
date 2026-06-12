@@ -1,13 +1,15 @@
 using System.ComponentModel;
 using System.Text;
-using System.Text.Json;
+using Microsoft.Extensions.Options;
 using ModelContextProtocol.Server;
+using TerraformApi.Domain.Models;
 
 namespace TerraformApi.Mcp.Tools;
 
 /// <summary>
-/// MCP tool that lists available APIM environment presets loaded from appsettings.json.
-/// Provides auto-fill values for resource group names, APIM instance names, gateway hosts, etc.
+/// MCP tool that lists available APIM environment presets from configuration.
+/// Uses IOptions to read from appsettings.json through the standard configuration system,
+/// consistent with how the API endpoint reads the same data.
 /// </summary>
 [McpServerToolType]
 public static class EnvironmentsTool
@@ -18,118 +20,77 @@ public static class EnvironmentsTool
                  "API gateway host, CORS settings, and other APIM configuration. Use these presets to " +
                  "auto-fill parameters when calling the convert or update tools.")]
     public static string ListEnvironments(
+        IOptions<Dictionary<string, ApimEnvironmentConfig>> options,
         [Description("Optional: name of a specific environment to retrieve (e.g. 'dev', 'staging', 'prod'). " +
                      "If omitted, all environments are listed.")] string? environmentName = null)
     {
-        return ListEnvironmentsFromPath(FindAppsettingsPath(), environmentName);
+        return FormatEnvironments(options.Value, environmentName);
     }
 
     /// <summary>
-    /// Core implementation that reads environment presets from a given config file path.
-    /// Separated from the MCP entry point so tests can provide a custom path.
+    /// Core formatting logic. Separated from the MCP entry point for testability.
     /// </summary>
-    internal static string ListEnvironmentsFromPath(string? configPath, string? environmentName = null)
+    internal static string FormatEnvironments(Dictionary<string, ApimEnvironmentConfig> environments, string? environmentName = null)
     {
-        try
+        if (environments.Count == 0)
         {
-            if (configPath == null)
-            {
-                return "No appsettings.json found. Environment presets are not configured.\n\n" +
-                       "To use environment presets, create an appsettings.json with an 'ApimEnvironments' section " +
-                       "in the same directory as the MCP server executable.";
-            }
-
-            var json = File.ReadAllText(configPath);
-            using var doc = JsonDocument.Parse(json);
-
-            if (!doc.RootElement.TryGetProperty("ApimEnvironments", out var envSection))
-            {
-                return "No 'ApimEnvironments' section found in appsettings.json.\n\n" +
-                       "Add an 'ApimEnvironments' section with named environment presets.";
-            }
-
-            if (environmentName is not null)
-            {
-                if (envSection.TryGetProperty(environmentName, out var env))
-                {
-                    return $"Environment: {environmentName}\n\n{FormatEnvironment(environmentName, env)}";
-                }
-
-                var available = envSection.EnumerateObject().Select(p => p.Name);
-                return $"Environment '{environmentName}' not found.\n" +
-                       $"Available environments: {string.Join(", ", available)}";
-            }
-
-            var sb = new StringBuilder();
-            sb.AppendLine("Available APIM Environment Presets:");
-            sb.AppendLine(new string('=', 50));
-
-            foreach (var prop in envSection.EnumerateObject())
-            {
-                sb.AppendLine();
-                sb.AppendLine(FormatEnvironment(prop.Name, prop.Value));
-                sb.AppendLine(new string('-', 50));
-            }
-
-            return sb.ToString();
-        }
-        catch (Exception ex)
-        {
-            return $"Failed to load environment presets: {ex.Message}";
-        }
-    }
-
-    /// <summary>
-    /// Searches for appsettings.json in the executable directory and parent directories.
-    /// </summary>
-    internal static string? FindAppsettingsPath()
-    {
-        // Check alongside the MCP server executable
-        var exeDir = AppContext.BaseDirectory;
-        var path = Path.Combine(exeDir, "appsettings.json");
-        if (File.Exists(path)) return path;
-
-        // Walk up from current directory to find a project root with appsettings.json
-        var dir = Directory.GetCurrentDirectory();
-        for (var i = 0; i < 5; i++)
-        {
-            path = Path.Combine(dir, "appsettings.json");
-            if (File.Exists(path)) return path;
-
-            // Also check in src/TerraformApi.Api/ (the web project)
-            path = Path.Combine(dir, "src", "TerraformApi.Api", "appsettings.json");
-            if (File.Exists(path)) return path;
-
-            var parent = Directory.GetParent(dir);
-            if (parent == null) break;
-            dir = parent.FullName;
+            return "No environment presets configured.\n\n" +
+                   "To use environment presets, add an 'ApimEnvironments' section to appsettings.json.";
         }
 
-        return null;
+        if (environmentName is not null)
+        {
+            if (environments.TryGetValue(environmentName, out var env))
+            {
+                return $"Environment: {environmentName}\n\n{FormatSingleEnvironment(environmentName, env)}";
+            }
+
+            return $"Environment '{environmentName}' not found.\n" +
+                   $"Available environments: {string.Join(", ", environments.Keys)}";
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine("Available APIM Environment Presets:");
+        sb.AppendLine(new string('=', 50));
+
+        foreach (var (name, config) in environments)
+        {
+            sb.AppendLine();
+            sb.AppendLine(FormatSingleEnvironment(name, config));
+            sb.AppendLine(new string('-', 50));
+        }
+
+        return sb.ToString();
     }
 
     /// <summary>
     /// Formats a single environment preset into a human-readable block.
     /// </summary>
-    private static string FormatEnvironment(string name, JsonElement env)
+    private static string FormatSingleEnvironment(string name, ApimEnvironmentConfig config)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"[{name}]");
 
-        foreach (var prop in env.EnumerateObject())
-        {
-            var value = prop.Value.ValueKind switch
-            {
-                JsonValueKind.String => prop.Value.GetString(),
-                JsonValueKind.True => "true",
-                JsonValueKind.False => "false",
-                JsonValueKind.Number => prop.Value.GetRawText(),
-                JsonValueKind.Array => string.Join(", ", prop.Value.EnumerateArray().Select(e => e.GetString())),
-                _ => prop.Value.GetRawText()
-            };
+        if (config.StageGroupName is not null)
+            sb.AppendLine($"  StageGroupName: {config.StageGroupName}");
+        if (config.ApimName is not null)
+            sb.AppendLine($"  ApimName: {config.ApimName}");
+        if (config.ApiGatewayHost is not null)
+            sb.AppendLine($"  ApiGatewayHost: {config.ApiGatewayHost}");
+        if (config.FrontendHost is not null)
+            sb.AppendLine($"  FrontendHost: {config.FrontendHost}");
+        if (config.CompanyDomain is not null)
+            sb.AppendLine($"  CompanyDomain: {config.CompanyDomain}");
+        if (config.LocalDevHost is not null)
+            sb.AppendLine($"  LocalDevHost: {config.LocalDevHost}");
+        if (config.LocalDevPort is not null)
+            sb.AppendLine($"  LocalDevPort: {config.LocalDevPort}");
 
-            sb.AppendLine($"  {prop.Name}: {value}");
-        }
+        sb.AppendLine($"  SubscriptionRequired: {config.SubscriptionRequired.ToString().ToLowerInvariant()}");
+        sb.AppendLine($"  IncludeCorsPolicy: {config.IncludeCorsPolicy.ToString().ToLowerInvariant()}");
+
+        if (config.AllowedMethods.Count > 0)
+            sb.AppendLine($"  AllowedMethods: {string.Join(", ", config.AllowedMethods)}");
 
         return sb.ToString();
     }

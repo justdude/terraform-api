@@ -14,6 +14,8 @@ public static class DependencyInjection
         services.AddSingleton<ITerraformMerger, TerraformMergerService>();
         services.AddSingleton<IConversionOrchestrator, ConversionOrchestratorService>();
         services.AddSingleton<IEnvironmentTransformer, EnvironmentTransformerService>();
+        services.AddSingleton<ITerraformOperationsParser, TerraformOperationsParserService>();
+        services.AddSingleton<IOpenApiOperationsFetcher, OpenApiOperationsFetcherService>();
 
         return services;
     }

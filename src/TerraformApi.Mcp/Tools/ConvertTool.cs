@@ -18,7 +18,8 @@ public static class ConvertTool
                  "You can provide either the OpenAPI JSON content directly or specify a URL to fetch it from. " +
                  "Include APIM settings (environment, resource group, APIM instance name, etc.) to generate " +
                  "a complete Terraform HCL block for Azure API Management.")]
-    public static string Convert(
+    public static async Task<string> Convert(
+        HttpClient httpClient,
         IConversionOrchestrator orchestrator,
         [Description("Target environment name (e.g. 'dev', 'staging', 'prod')")] string environment,
         [Description("Terraform variable group name for the API (e.g. 'my-api-group')")] string apiGroupName,
@@ -40,16 +41,20 @@ public static class ConvertTool
         [Description("Company domain for CORS origin construction (e.g. 'company.com')")] string? companyDomain = null,
         [Description("Local dev host for CORS (e.g. 'localhost')")] string? localDevHost = null,
         [Description("Local dev port for CORS (e.g. '3000')")] string? localDevPort = null,
+        [Description("Optional prefix for generated operation IDs")] string? operationPrefix = null,
+        [Description("Additional CORS allowed origins (list of URLs)")] List<string>? allowedOrigins = null,
+        [Description("CORS allowed HTTP methods (defaults to GET, POST, PUT, DELETE, OPTIONS)")] List<string>? allowedMethods = null,
         [Description("APIM product ID to associate the API with")] string? productId = null,
         [Description("Whether to generate a product block (default: false)")] bool generateProduct = false,
         [Description("Product display name")] string? productDisplayName = null,
         [Description("Product description")] string? productDescription = null,
         [Description("Whether the product requires a subscription (default: false)")] bool productSubscriptionRequired = false,
-        [Description("Whether the product requires approval (default: false)")] bool productApprovalRequired = false)
+        [Description("Whether the product requires approval (default: false)")] bool productApprovalRequired = false,
+        CancellationToken cancellationToken = default)
     {
         try
         {
-            var resolvedJson = ResolveOpenApiJson(openApiJson, openApiUrl);
+            var resolvedJson = await ResolveOpenApiJson(httpClient, openApiJson, openApiUrl, cancellationToken);
 
             var settings = new ConversionSettings
             {
@@ -71,6 +76,9 @@ public static class ConvertTool
                 CompanyDomain = companyDomain,
                 LocalDevHost = localDevHost,
                 LocalDevPort = localDevPort,
+                OperationPrefix = operationPrefix,
+                AllowedOrigins = allowedOrigins ?? [],
+                AllowedMethods = allowedMethods ?? ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
                 ProductId = productId,
                 GenerateProduct = generateProduct,
                 ProductDisplayName = productDisplayName,
@@ -107,9 +115,10 @@ public static class ConvertTool
 
     /// <summary>
     /// Resolves the OpenAPI specification JSON from either direct input or a URL.
-    /// If a URL is provided, it will be fetched synchronously using HttpClient.
+    /// Uses the DI-injected HttpClient for proper connection pooling.
     /// </summary>
-    private static string ResolveOpenApiJson(string? openApiJson, string? openApiUrl)
+    internal static async Task<string> ResolveOpenApiJson(
+        HttpClient httpClient, string? openApiJson, string? openApiUrl, CancellationToken cancellationToken = default)
     {
         if (!string.IsNullOrWhiteSpace(openApiJson))
         {
@@ -118,52 +127,43 @@ public static class ConvertTool
 
         if (!string.IsNullOrWhiteSpace(openApiUrl))
         {
+            if (!Uri.TryCreate(openApiUrl, UriKind.Absolute, out var uri) ||
+                (uri.Scheme != "http" && uri.Scheme != "https"))
+            {
+                throw new InvalidOperationException(
+                    $"Invalid URL: '{openApiUrl}'. Must be an absolute HTTP(S) URL.");
+            }
+
             try
             {
-                using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
-                client.DefaultRequestHeaders.Add("Accept", "application/json");
-
-                var response = client.GetAsync(openApiUrl).GetAwaiter().GetResult();
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    throw new InvalidOperationException(
-                        $"Failed to fetch OpenAPI specification from {openApiUrl}: HTTP {response.StatusCode} {response.ReasonPhrase}");
-                }
-
-                var content = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                var content = await httpClient.GetStringAsync(uri, cancellationToken);
 
                 if (string.IsNullOrWhiteSpace(content))
-                {
                     throw new InvalidOperationException($"Empty response received from {openApiUrl}");
-                }
 
-                ValidateJsonContent(content);
+                // Validate it's actually JSON
+                using var document = JsonDocument.Parse(content);
+                _ = document.RootElement;
+
                 return content;
             }
             catch (HttpRequestException ex)
             {
-                throw new InvalidOperationException($"Network error fetching OpenAPI specification from {openApiUrl}: {ex.Message}", ex);
+                throw new InvalidOperationException(
+                    $"Failed to fetch OpenAPI specification from {openApiUrl}: {ex.Message}", ex);
             }
-            catch (OperationCanceledException ex)
+            catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
             {
-                throw new InvalidOperationException($"Request to fetch OpenAPI specification was cancelled for {openApiUrl}", ex);
+                throw new InvalidOperationException(
+                    $"Request to '{openApiUrl}' timed out.", ex);
+            }
+            catch (JsonException ex)
+            {
+                throw new InvalidOperationException(
+                    $"Response from {openApiUrl} is not valid JSON: {ex.Message}", ex);
             }
         }
 
         throw new InvalidOperationException("Either 'openApiJson' or 'openApiUrl' must be provided");
-    }
-
-    private static void ValidateJsonContent(string content)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(content);
-            _ = document.RootElement;
-        }
-        catch (JsonException ex)
-        {
-            throw new JsonException($"Failed to parse JSON from OpenAPI specification: {ex.Message}", ex);
-        }
     }
 }

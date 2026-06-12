@@ -7,6 +7,7 @@ namespace TerraformApi.Mcp.Tests.Tools;
 public class ConvertToolTests
 {
     private readonly IConversionOrchestrator _orchestrator;
+    private readonly HttpClient _httpClient = new();
 
     private const string ValidOpenApi = """
         {
@@ -46,9 +47,10 @@ public class ConvertToolTests
     }
 
     [Fact]
-    public void Convert_ValidInput_ReturnsTerraformConfig()
+    public async Task Convert_ValidInput_ReturnsTerraformConfig()
     {
-        var result = ConvertTool.Convert(
+        var result = await ConvertTool.Convert(
+            _httpClient,
             _orchestrator,
             openApiJson: ValidOpenApi,
             environment: "dev",
@@ -67,9 +69,10 @@ public class ConvertToolTests
     }
 
     [Fact]
-    public void Convert_ValidInput_ContainsAllOperations()
+    public async Task Convert_ValidInput_ContainsAllOperations()
     {
-        var result = ConvertTool.Convert(
+        var result = await ConvertTool.Convert(
+            _httpClient,
             _orchestrator,
             openApiJson: ValidOpenApi,
             environment: "dev",
@@ -81,15 +84,16 @@ public class ConvertToolTests
             apiGatewayHost: "api.dev.company.com",
             backendServicePath: "pet-service");
 
-        Assert.Contains("listpets", result.ToLowerInvariant());
-        Assert.Contains("createpet", result.ToLowerInvariant());
-        Assert.Contains("getpet", result.ToLowerInvariant());
+        Assert.Contains("listpets", result.ToLower());
+        Assert.Contains("createpet", result.ToLower());
+        Assert.Contains("getpet", result.ToLower());
     }
 
     [Fact]
-    public void Convert_ValidInput_AppendsSummaryComment()
+    public async Task Convert_ValidInput_AppendsSummaryComment()
     {
-        var result = ConvertTool.Convert(
+        var result = await ConvertTool.Convert(
+            _httpClient,
             _orchestrator,
             openApiJson: ValidOpenApi,
             environment: "dev",
@@ -106,9 +110,10 @@ public class ConvertToolTests
     }
 
     [Fact]
-    public void Convert_InvalidJson_ReturnsFailureMessage()
+    public async Task Convert_InvalidJson_ReturnsFailureMessage()
     {
-        var result = ConvertTool.Convert(
+        var result = await ConvertTool.Convert(
+            _httpClient,
             _orchestrator,
             openApiJson: "{this is not valid json!!",
             environment: "dev",
@@ -124,9 +129,10 @@ public class ConvertToolTests
     }
 
     [Fact]
-    public void Convert_InvalidResourceGroup_ReturnsFailureMessage()
+    public async Task Convert_InvalidResourceGroup_ReturnsFailureMessage()
     {
-        var result = ConvertTool.Convert(
+        var result = await ConvertTool.Convert(
+            _httpClient,
             _orchestrator,
             openApiJson: ValidOpenApi,
             environment: "dev",
@@ -143,9 +149,10 @@ public class ConvertToolTests
     }
 
     [Fact]
-    public void Convert_WithCorsPolicy_IncludesCorsBlock()
+    public async Task Convert_WithCorsPolicy_IncludesCorsBlock()
     {
-        var result = ConvertTool.Convert(
+        var result = await ConvertTool.Convert(
+            _httpClient,
             _orchestrator,
             openApiJson: ValidOpenApi,
             environment: "dev",
@@ -168,9 +175,10 @@ public class ConvertToolTests
     }
 
     [Fact]
-    public void Convert_WithCustomApiName_UsesCustomName()
+    public async Task Convert_WithCustomApiName_UsesCustomName()
     {
-        var result = ConvertTool.Convert(
+        var result = await ConvertTool.Convert(
+            _httpClient,
             _orchestrator,
             openApiJson: ValidOpenApi,
             environment: "dev",
@@ -187,9 +195,10 @@ public class ConvertToolTests
     }
 
     [Fact]
-    public void Convert_WithProductGeneration_IncludesProductBlock()
+    public async Task Convert_WithProductGeneration_IncludesProductBlock()
     {
-        var result = ConvertTool.Convert(
+        var result = await ConvertTool.Convert(
+            _httpClient,
             _orchestrator,
             openApiJson: ValidOpenApi,
             environment: "dev",
@@ -210,9 +219,10 @@ public class ConvertToolTests
     }
 
     [Fact]
-    public void Convert_WithSubscriptionRequired_SetsFlag()
+    public async Task Convert_WithSubscriptionRequired_SetsFlag()
     {
-        var result = ConvertTool.Convert(
+        var result = await ConvertTool.Convert(
+            _httpClient,
             _orchestrator,
             openApiJson: ValidOpenApi,
             environment: "dev",
@@ -230,9 +240,10 @@ public class ConvertToolTests
     }
 
     [Fact]
-    public void Convert_DifferentEnvironments_ProducesDifferentOutput()
+    public async Task Convert_DifferentEnvironments_ProducesDifferentOutput()
     {
-        var devResult = ConvertTool.Convert(
+        var devResult = await ConvertTool.Convert(
+            _httpClient,
             _orchestrator,
             openApiJson: ValidOpenApi,
             environment: "dev",
@@ -244,7 +255,8 @@ public class ConvertToolTests
             apiGatewayHost: "api.dev.company.com",
             backendServicePath: "pet-service");
 
-        var prodResult = ConvertTool.Convert(
+        var prodResult = await ConvertTool.Convert(
+            _httpClient,
             _orchestrator,
             openApiJson: ValidOpenApi,
             environment: "prod",
@@ -263,7 +275,7 @@ public class ConvertToolTests
     }
 
     [Fact]
-    public void Convert_SingleOperation_ReportsOneOperation()
+    public async Task Convert_SingleOperation_ReportsOneOperation()
     {
         var singleOpApi = """
             {
@@ -281,7 +293,8 @@ public class ConvertToolTests
             }
             """;
 
-        var result = ConvertTool.Convert(
+        var result = await ConvertTool.Convert(
+            _httpClient,
             _orchestrator,
             openApiJson: singleOpApi,
             environment: "dev",
@@ -294,6 +307,30 @@ public class ConvertToolTests
             backendServicePath: "simple-service");
 
         Assert.Contains("1 operations", result);
-        Assert.Contains("healthcheck", result.ToLowerInvariant());
+        Assert.Contains("healthcheck", result.ToLower());
+    }
+
+    // ── ResolveOpenApiJson tests ────────────────────────────────
+
+    [Fact]
+    public async Task ResolveOpenApiJson_DirectJson_ReturnsInput()
+    {
+        var result = await ConvertTool.ResolveOpenApiJson(_httpClient, ValidOpenApi, null);
+
+        Assert.Equal(ValidOpenApi, result);
+    }
+
+    [Fact]
+    public async Task ResolveOpenApiJson_NeitherProvided_ThrowsInvalidOperation()
+    {
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => ConvertTool.ResolveOpenApiJson(_httpClient, null, null));
+    }
+
+    [Fact]
+    public async Task ResolveOpenApiJson_InvalidUrlScheme_ThrowsInvalidOperation()
+    {
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => ConvertTool.ResolveOpenApiJson(_httpClient, null, "ftp://example.com/spec.json"));
     }
 }
