@@ -35,6 +35,7 @@ public class OperationExecutionGraphTests
             new ApimTemplateProfileDetectorService(),
             commentBuilder,
             hclWriter,
+            writer,
             resolver,
             NullLogger<AppendOnlySynchronizerService>.Instance);
 

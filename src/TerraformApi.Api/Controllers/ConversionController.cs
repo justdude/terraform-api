@@ -193,6 +193,15 @@ public sealed class ConversionController : ControllerBase
     [ProducesResponseType(typeof(ValidateResponse), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Validate([FromBody] ConvertRequest request)
     {
+        if (string.IsNullOrWhiteSpace(request.Environment))
+        {
+            return BadRequest(new ValidateResponse
+            {
+                IsValid = false,
+                Errors = ["Environment is required."]
+            });
+        }
+
         var errors = new List<string>();
 
         try

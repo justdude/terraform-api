@@ -88,6 +88,7 @@ public class AnalyzeToolTests
             new ApimTemplateProfileDetectorService(),
             commentBuilder,
             hclWriter,
+            writer,
             resolver,
             NullLogger<AppendOnlySynchronizerService>.Instance);
 

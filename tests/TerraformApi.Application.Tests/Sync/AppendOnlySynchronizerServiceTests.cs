@@ -23,12 +23,15 @@ public class AppendOnlySynchronizerServiceTests
     {
         _reader = new ApimTerraformReaderService(_parser);
         var resolver = new TerraformInterpolationResolver();
+        var hclWriter = new HclWriterService();
+        var commentBuilder = new OperationCommentBuilderService();
         _synchronizer = new AppendOnlySynchronizerService(
             new OperationMatcherService(resolver),
             new DuplicateDetectorService(),
             new ApimTemplateProfileDetectorService(),
-            new OperationCommentBuilderService(),
-            new HclWriterService(),
+            commentBuilder,
+            hclWriter,
+            new ApimTerraformWriterService(hclWriter, _reader, commentBuilder),
             resolver,
             NullLogger<AppendOnlySynchronizerService>.Instance);
     }
@@ -518,6 +521,47 @@ public class AppendOnlySynchronizerServiceTests
             w => w.Kind == SyncWarningKind.OperationIdContainsInterpolation);
         Assert.Contains(result.Report.Warnings,
             w => w.Kind == SyncWarningKind.UrlTemplateContainsInterpolation);
+    }
+
+    [Fact]
+    public void Synchronize_MarkDeprecated_AnnotatesDescriptionWithoutDeleting()
+    {
+        var tf = TfGroup("g",
+            TfOperation("op-kept", "GET", "/kept"),
+            TfOperation("op-gone", "DELETE", "/gone", description: "Old operation"));
+
+        var config = Config("g", Op("op-kept", "GET", "/kept"));
+        var policy = new MergePolicy { UnknownOperationPolicy = OperationPreservationMode.MarkDeprecated };
+
+        var result = Sync(tf, config, policy);
+
+        // The operation is still present (never deleted) but its description is annotated.
+        Assert.Contains("op-gone", result.TerraformConfig);
+        Assert.Contains("[deprecated: not present in OpenAPI spec]", result.TerraformConfig);
+        Assert.Contains("Old operation [deprecated", result.TerraformConfig);
+        Assert.Equal(1, result.Report.OperationsPreserved);
+
+        // Second run must not duplicate the marker.
+        var second = Sync(result.TerraformConfig, config, policy);
+        var markerCount = second.TerraformConfig.Split("[deprecated:").Length - 1;
+        Assert.Equal(1, markerCount);
+    }
+
+    [Fact]
+    public void Synchronize_RemovePolicy_NotHonoredAndWarned()
+    {
+        var tf = TfGroup("g",
+            TfOperation("op-kept", "GET", "/kept"),
+            TfOperation("op-gone", "DELETE", "/gone"));
+
+        var config = Config("g", Op("op-kept", "GET", "/kept"));
+        var policy = new MergePolicy { UnknownOperationPolicy = OperationPreservationMode.Remove };
+
+        var result = Sync(tf, config, policy);
+
+        // Append-only invariant: the operation survives even with Remove requested.
+        Assert.Contains("op-gone", result.TerraformConfig);
+        Assert.Contains(result.Report.Warnings, w => w.Message.Contains("Remove is not supported"));
     }
 
     // -----------------------------------------------------------------

@@ -211,6 +211,24 @@ public class HclLexerTests
     }
 
     [Fact]
+    public void Tokenize_EscapedInterpolation_NotTreatedAsInterpolation()
+    {
+        // HCL escapes a literal "${" as "$${" — must not set HasInterpolation.
+        var tokens = Lex("a = \"$${not_a_var}\"");
+        Assert.Equal(HclTokenKind.String, tokens[2].Kind);
+        Assert.False(tokens[2].HasInterpolation);
+        Assert.Equal("$${not_a_var}", tokens[2].Text);
+    }
+
+    [Fact]
+    public void Tokenize_MixedEscapedAndRealInterpolation_OnlyRealDetected()
+    {
+        var tokens = Lex("a = \"$${literal}-${real}\"");
+        Assert.True(tokens[2].HasInterpolation);
+        Assert.Equal("$${literal}-${real}", tokens[2].Text);
+    }
+
+    [Fact]
     public void Tokenize_SourceSpans_SliceBackToOriginalText()
     {
         var src = "key = \"value\"";

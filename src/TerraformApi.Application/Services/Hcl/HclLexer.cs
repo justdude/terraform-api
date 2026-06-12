@@ -178,6 +178,15 @@ internal sealed class HclLexer
                 continue;
             }
 
+            // HCL escape for a literal "${": "$${" — not an interpolation.
+            if (ch == '$' && Peek(1) == '$')
+            {
+                sb.Append("$$");
+                Advance();
+                Advance();
+                continue;
+            }
+
             if (ch == '$' && Peek(1) == '{')
             {
                 hasInterpolation = true;

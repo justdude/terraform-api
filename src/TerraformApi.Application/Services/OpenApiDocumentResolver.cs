@@ -10,6 +10,12 @@ namespace TerraformApi.Application.Services;
 public static class OpenApiDocumentResolver
 {
     /// <summary>
+    /// Cap on fetched spec size — mirrors the API's request body limit so a
+    /// hostile/misconfigured URL cannot exhaust memory.
+    /// </summary>
+    private const long MaxResponseBytes = 10 * 1024 * 1024;
+
+    /// <summary>
     /// Returns <paramref name="openApiJson"/> when provided; otherwise fetches
     /// from <paramref name="openApiUrl"/> and validates the response is JSON.
     /// Throws <see cref="InvalidOperationException"/> with a user-facing message
@@ -37,7 +43,23 @@ public static class OpenApiDocumentResolver
 
             try
             {
-                var content = await httpClient.GetStringAsync(uri, cancellationToken);
+                using var response = await httpClient.GetAsync(
+                    uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                response.EnsureSuccessStatusCode();
+
+                if (response.Content.Headers.ContentLength > MaxResponseBytes)
+                {
+                    throw new InvalidOperationException(
+                        $"Response from {openApiUrl} exceeds the {MaxResponseBytes / (1024 * 1024)} MB limit.");
+                }
+
+                var content = await response.Content.ReadAsStringAsync(cancellationToken);
+
+                if (content.Length > MaxResponseBytes)
+                {
+                    throw new InvalidOperationException(
+                        $"Response from {openApiUrl} exceeds the {MaxResponseBytes / (1024 * 1024)} MB limit.");
+                }
 
                 if (string.IsNullOrWhiteSpace(content))
                     throw new InvalidOperationException($"Empty response received from {openApiUrl}");

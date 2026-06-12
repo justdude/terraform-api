@@ -24,8 +24,13 @@ public sealed class SyncController : ControllerBase
     };
 
     private readonly ISyncOrchestrator _orchestrator;
+    private readonly IHttpClientFactory _httpClientFactory;
 
-    public SyncController(ISyncOrchestrator orchestrator) => _orchestrator = orchestrator;
+    public SyncController(ISyncOrchestrator orchestrator, IHttpClientFactory httpClientFactory)
+    {
+        _orchestrator = orchestrator;
+        _httpClientFactory = httpClientFactory;
+    }
 
     /// <summary>
     /// Append-only sync of an existing Terraform config with an OpenAPI spec.
@@ -39,10 +44,20 @@ public sealed class SyncController : ControllerBase
     [HttpPost("sync")]
     [ProducesResponseType(typeof(SyncResult), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(SyncResult), StatusCodes.Status400BadRequest)]
-    public IActionResult Sync([FromBody] SyncRequestDto request)
+    public async Task<IActionResult> Sync([FromBody] SyncRequestDto request)
     {
-        if (string.IsNullOrWhiteSpace(request.OpenApiJson))
-            return BadRequest(new { error = "OpenAPI JSON is required." });
+        // Accept openApiJson directly or fetch from openApiUrl — same contract
+        // as /api/convert and the sync_openapi_with_terraform MCP tool.
+        string openApiJson;
+        try
+        {
+            openApiJson = await Application.Services.OpenApiDocumentResolver.ResolveAsync(
+                _httpClientFactory.CreateClient(), request.OpenApiJson, request.OpenApiUrl, HttpContext.RequestAborted);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
 
         ApimTemplateProfile? overrideProfile = null;
         if (request.TemplateProfileName is { Length: > 0 } name && name != "Auto")
@@ -89,7 +104,7 @@ public sealed class SyncController : ControllerBase
 
         var result = _orchestrator.Sync(new SyncRequest
         {
-            OpenApiJson = request.OpenApiJson,
+            OpenApiJson = openApiJson,
             ExistingTerraform = request.ExistingTerraform,
             Settings = DtoMapper.ToSettings(request),
             MergePolicy = policy,
@@ -129,6 +144,11 @@ public sealed class SyncController : ControllerBase
     [ProducesResponseType(typeof(ApplyProfileResult), StatusCodes.Status400BadRequest)]
     public IActionResult ApplyProfile([FromBody] ApplyTemplateProfileRequest request)
     {
+        // `required` members are not enforced by model binding when automatic
+        // validation is suppressed — guard before dereferencing.
+        if (string.IsNullOrWhiteSpace(request.Direction))
+            return BadRequest(new { error = "Direction must be 'Templatize' or 'Resolve'." });
+
         var resolve = request.Direction.Equals("Resolve", StringComparison.OrdinalIgnoreCase);
         if (!resolve && !request.Direction.Equals("Templatize", StringComparison.OrdinalIgnoreCase))
             return BadRequest(new { error = "Direction must be 'Templatize' or 'Resolve'." });

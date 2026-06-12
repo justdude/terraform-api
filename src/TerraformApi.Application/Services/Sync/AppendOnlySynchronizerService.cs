@@ -23,6 +23,7 @@ public sealed class AppendOnlySynchronizerService : IAppendOnlySynchronizer
     private readonly IApimTemplateProfileDetector _profileDetector;
     private readonly IOperationCommentBuilder _commentBuilder;
     private readonly IHclWriter _hclWriter;
+    private readonly IApimTerraformWriter _apimWriter;
     private readonly TerraformInterpolationResolver _resolver;
     private readonly ILogger<AppendOnlySynchronizerService> _logger;
 
@@ -32,6 +33,7 @@ public sealed class AppendOnlySynchronizerService : IAppendOnlySynchronizer
         IApimTemplateProfileDetector profileDetector,
         IOperationCommentBuilder commentBuilder,
         IHclWriter hclWriter,
+        IApimTerraformWriter apimWriter,
         TerraformInterpolationResolver resolver,
         ILogger<AppendOnlySynchronizerService> logger)
     {
@@ -40,6 +42,7 @@ public sealed class AppendOnlySynchronizerService : IAppendOnlySynchronizer
         _profileDetector = profileDetector;
         _commentBuilder = commentBuilder;
         _hclWriter = hclWriter;
+        _apimWriter = apimWriter;
         _resolver = resolver;
         _logger = logger;
     }
@@ -189,12 +192,43 @@ public sealed class AppendOnlySynchronizerService : IAppendOnlySynchronizer
         }
 
         // ---- 2. Operations only in Terraform: preserve -------------------------
+        const string deprecationMarker = "[deprecated: not present in OpenAPI spec]";
         foreach (var tfFp in matchResult.OnlyInTerraform)
         {
+            var appliedChanges = new List<string>();
+
+            // MarkDeprecated: annotate the description without deleting anything.
+            // (Remove is intentionally NOT honored — append-only invariant.)
+            if (policy.UnknownOperationPolicy == OperationPreservationMode.MarkDeprecated
+                && tfFp.SourceIndex >= 0)
+            {
+                var tfOp = targetOperations[tfFp.SourceIndex];
+                var currentDescription = (tfOp.AstNode.Get("description") as HclLiteral)?.RawValue ?? "";
+                if (!currentDescription.Contains(deprecationMarker, StringComparison.Ordinal))
+                {
+                    var annotated = string.IsNullOrEmpty(currentDescription)
+                        ? deprecationMarker
+                        : $"{currentDescription} {deprecationMarker}";
+                    WriteScalarIntoAst(tfOp.AstNode, "description", annotated);
+                    appliedChanges.Add("description += deprecation marker");
+                    _logger.LogInformation("Marked operation {OperationId} as deprecated", tfFp.OperationId);
+                }
+            }
+            else if (policy.UnknownOperationPolicy == OperationPreservationMode.Remove)
+            {
+                warnings.Add(new SyncWarning
+                {
+                    Message = "UnknownOperationPolicy=Remove is not supported by append-only sync — operation preserved",
+                    OperationId = tfFp.OperationId,
+                    Kind = SyncWarningKind.SkippedFieldDueToPolicy
+                });
+            }
+
             diffs.Add(new OperationDiff
             {
                 TerraformFingerprint = tfFp,
-                Kind = OperationDiffKind.PreservedFromTerraform
+                Kind = OperationDiffKind.PreservedFromTerraform,
+                AppliedChanges = appliedChanges
             });
             preserved++;
         }
@@ -398,11 +432,7 @@ public sealed class AppendOnlySynchronizerService : IAppendOnlySynchronizer
         };
 
         var emptyOperationsConfig = config with { ApiOperations = [] };
-        var writer = new ApimTerraformWriterService(
-            _hclWriter,
-            new ApimTerraformReaderService(new Hcl.HclParserService()),
-            _commentBuilder);
-        var document = writer.BuildFromConfiguration(emptyOperationsConfig, writerBuildOptions);
+        var document = _apimWriter.BuildFromConfiguration(emptyOperationsConfig, writerBuildOptions);
         return document.ApiGroups.Single().AstNode;
     }
 

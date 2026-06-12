@@ -77,13 +77,18 @@ public sealed partial class OperationMatcherService : IOperationMatcher
 
         if (options.CollapseSlashes)
         {
-            // Collapse duplicate slashes outside the scheme separator.
-            var schemeEnd = result.IndexOf("://", StringComparison.Ordinal);
-            var prefix = schemeEnd > 0 ? result[..(schemeEnd + 3)] : "";
-            var rest = schemeEnd > 0 ? result[(schemeEnd + 3)..] : result;
+            // Collapse duplicate slashes in the path only — never inside the
+            // scheme separator or the query/fragment portion.
+            var queryStart = result.IndexOfAny(['?', '#']);
+            var path = queryStart >= 0 ? result[..queryStart] : result;
+            var suffix = queryStart >= 0 ? result[queryStart..] : "";
+
+            var schemeEnd = path.IndexOf("://", StringComparison.Ordinal);
+            var prefix = schemeEnd > 0 ? path[..(schemeEnd + 3)] : "";
+            var rest = schemeEnd > 0 ? path[(schemeEnd + 3)..] : path;
             while (rest.Contains("//"))
                 rest = rest.Replace("//", "/");
-            result = prefix + rest;
+            result = prefix + rest + suffix;
         }
 
         if (options.TrimTrailingSlash && result.Length > 1)
@@ -238,7 +243,7 @@ public sealed partial class OperationMatcherService : IOperationMatcher
             var tfIndex = new Dictionary<string, List<OperationFingerprint>>(StringComparer.Ordinal);
             foreach (var tf in remainingTf)
             {
-                var value = KeyValue(identity(tf), key, strategy, identity(tf));
+                var value = KeyValue(identity(tf), key, strategy);
                 if (value is null)
                     continue;
                 if (!tfIndex.TryGetValue(value, out var list))
@@ -248,7 +253,7 @@ public sealed partial class OperationMatcherService : IOperationMatcher
 
             foreach (var openApiFp in remainingOpenApi.ToList())
             {
-                var value = KeyValue(identity(openApiFp), key, strategy, identity(openApiFp));
+                var value = KeyValue(identity(openApiFp), key, strategy);
                 if (value is null || !tfIndex.TryGetValue(value, out var candidates) || candidates.Count == 0)
                     continue;
 
@@ -280,8 +285,7 @@ public sealed partial class OperationMatcherService : IOperationMatcher
     internal static string? KeyValue(
         OperationFingerprint fingerprint,
         OperationMatchKey key,
-        OperationMatchStrategy strategy,
-        OperationFingerprint original)
+        OperationMatchStrategy strategy)
     {
         return key switch
         {

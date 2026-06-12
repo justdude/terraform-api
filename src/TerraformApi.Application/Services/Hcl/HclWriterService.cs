@@ -70,10 +70,10 @@ public sealed class HclWriterService : IHclWriter
     {
         var pad = new string(' ', indent);
 
-        // Fast path: emit the original slice unchanged.
+        // Fast path: emit the original slice (re-indented if depth changed).
         if (source is not null && !IsDirtyItem(item))
         {
-            sb.Append(pad).Append(Slice(source, item)).Append(options.LineEnding);
+            sb.Append(pad).Append(ReindentedSlice(source, item, indent)).Append(options.LineEnding);
             return;
         }
 
@@ -195,7 +195,7 @@ public sealed class HclWriterService : IHclWriter
             // Fast path: unchanged element (incl. its leading comments) → original slice.
             if (source is not null && !IsDirtyArrayItem(item) && item.HasSourceSpan)
             {
-                sb.Append(pad).Append(Slice(source, item)).Append(',').Append(options.LineEnding);
+                sb.Append(pad).Append(ReindentedSlice(source, item, innerIndent)).Append(',').Append(options.LineEnding);
                 continue;
             }
 
@@ -241,4 +241,54 @@ public sealed class HclWriterService : IHclWriter
 
     private static string Slice(string source, HclNode node) =>
         source[node.StartOffset..node.EndOffset];
+
+    /// <summary>
+    /// Returns the original slice with continuation lines shifted so the node's
+    /// original indentation (Column - 1) becomes <paramref name="targetIndent"/>.
+    /// Keeps multi-line slices aligned when a clean child is emitted under a
+    /// re-rendered parent at a different depth. Single-line slices and slices
+    /// already at the target depth are returned unchanged.
+    /// </summary>
+    private static string ReindentedSlice(string source, HclNode node, int targetIndent)
+    {
+        var slice = Slice(source, node);
+        var originalIndent = Math.Max(node.Column - 1, 0);
+        if (originalIndent == targetIndent || !slice.Contains('\n'))
+            return slice;
+
+        // Heredoc bodies are whitespace-significant and the closing marker of a
+        // plain << heredoc must stay at column 0 — never shift those slices.
+        if (ContainsHeredoc(node))
+            return slice;
+
+        var delta = targetIndent - originalIndent;
+        var lines = slice.Split('\n');
+        for (var i = 1; i < lines.Length; i++)
+        {
+            var line = lines[i];
+            if (line.Length == 0)
+                continue;
+
+            if (delta > 0)
+            {
+                lines[i] = new string(' ', delta) + line;
+            }
+            else
+            {
+                var removable = Math.Min(-delta, line.Length - line.TrimStart(' ').Length);
+                lines[i] = line[removable..];
+            }
+        }
+        return string.Join('\n', lines);
+    }
+
+    private static bool ContainsHeredoc(HclNode node) => node switch
+    {
+        HclHeredoc => true,
+        HclAssignment a => ContainsHeredoc(a.Value),
+        HclObject o => o.Items.Any(ContainsHeredoc),
+        HclArray ar => ar.Items.Any(ContainsHeredoc),
+        HclArrayItem i => ContainsHeredoc(i.Value),
+        _ => false
+    };
 }

@@ -141,8 +141,8 @@ public class OperationMatcherServiceTests
 
         // Different query params → different fingerprints under MethodAndUrlAndParams.
         Assert.NotEqual(
-            OperationMatcherService.KeyValue(fp1, OperationMatchKey.MethodAndUrlAndParams, strategy, fp1),
-            OperationMatcherService.KeyValue(fp2, OperationMatchKey.MethodAndUrlAndParams, strategy, fp2));
+            OperationMatcherService.KeyValue(fp1, OperationMatchKey.MethodAndUrlAndParams, strategy),
+            OperationMatcherService.KeyValue(fp2, OperationMatchKey.MethodAndUrlAndParams, strategy));
 
         // Under plain MethodAndUrl with two identical TF candidates → ambiguity.
         var plain = new OperationMatchStrategy { Keys = [OperationMatchKey.MethodAndUrl] };
@@ -270,6 +270,16 @@ public class OperationMatcherServiceTests
         Assert.Equal("users/{id}", OperationMatcherService.NormalizeUrl("/users//{id}", options));
         Assert.Equal("users/{id}", OperationMatcherService.NormalizeUrl("users/:id", options));
         Assert.Equal("https://x/users", OperationMatcherService.NormalizeUrl("HTTPS://x/users", options));
+    }
+
+    [Fact]
+    public void NormalizeUrl_DoesNotCollapseSlashesInQueryString()
+    {
+        var options = new UrlNormalizationOptions();
+
+        // "//" inside the query (e.g. an embedded URL) must survive collapsing.
+        Assert.Equal("redirect?to=https://x/y",
+            OperationMatcherService.NormalizeUrl("/redirect?to=https://x/y", options));
     }
 
     [Fact]

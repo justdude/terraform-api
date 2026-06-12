@@ -132,35 +132,80 @@ public sealed class ApimTemplateProfileApplierService : IApimTemplateProfileAppl
     {
         for (var i = 0; i < node.Items.Count; i++)
         {
-            if (node.Items[i] is not HclAssignment { Value: HclInterpolation interpolation } assignment)
+            if (node.Items[i] is not HclAssignment assignment)
                 continue;
 
-            var result = _resolver.ResolveWithReport(interpolation.InnerText, variables);
+            var fieldPath = $"{pathPrefix}.{assignment.Key}";
 
-            if (result.HasUnresolvedExpressions)
+            switch (assignment.Value)
             {
-                foreach (var expr in result.UnresolvedExpressions)
-                    warnings.Add($"{pathPrefix}.{assignment.Key}: variable '{expr}' has no value — left as ${{{expr}}}");
-            }
-
-            if (result.Value == interpolation.InnerText)
-                continue; // nothing was substituted
-
-            HclValue newValue = result.HasUnresolvedExpressions
-                ? new HclInterpolation
+                case HclInterpolation interpolation:
                 {
-                    InnerText = result.Value,
-                    ReferencedExpressions = HclParserService.ExtractReferences(result.Value)
-                }
-                : new HclLiteral { RawValue = result.Value, Kind = HclLiteralKind.String };
+                    var result = _resolver.ResolveWithReport(interpolation.InnerText, variables);
 
-            node.Items[i] = new HclAssignment
-            {
-                Key = assignment.Key,
-                KeyIsQuoted = assignment.KeyIsQuoted,
-                Value = newValue
-            };
-            changes.Add($"{pathPrefix}.{assignment.Key}: \"{interpolation.InnerText}\" → \"{result.Value}\"");
+                    if (result.HasUnresolvedExpressions)
+                    {
+                        foreach (var expr in result.UnresolvedExpressions)
+                            warnings.Add($"{fieldPath}: variable '{expr}' has no value — left as ${{{expr}}}");
+                    }
+
+                    if (result.Value == interpolation.InnerText)
+                        continue; // nothing was substituted
+
+                    HclValue newValue = result.HasUnresolvedExpressions
+                        ? new HclInterpolation
+                        {
+                            InnerText = result.Value,
+                            ReferencedExpressions = HclParserService.ExtractReferences(result.Value)
+                        }
+                        : new HclLiteral { RawValue = result.Value, Kind = HclLiteralKind.String };
+
+                    node.Items[i] = new HclAssignment
+                    {
+                        Key = assignment.Key,
+                        KeyIsQuoted = assignment.KeyIsQuoted,
+                        Value = newValue
+                    };
+                    changes.Add($"{fieldPath}: \"{interpolation.InnerText}\" → \"{result.Value}\"");
+                    break;
+                }
+
+                case HclHeredoc heredoc:
+                {
+                    var result = _resolver.ResolveWithReport(heredoc.Content, variables);
+
+                    if (result.HasUnresolvedExpressions)
+                    {
+                        foreach (var expr in result.UnresolvedExpressions.Distinct())
+                            warnings.Add($"{fieldPath}: variable '{expr}' has no value — left as ${{{expr}}}");
+                    }
+
+                    if (result.Value == heredoc.Content)
+                        continue;
+
+                    node.Items[i] = new HclAssignment
+                    {
+                        Key = assignment.Key,
+                        KeyIsQuoted = assignment.KeyIsQuoted,
+                        Value = heredoc with { Content = result.Value, StartOffset = -1, EndOffset = -1 }
+                    };
+                    changes.Add($"{fieldPath}: heredoc placeholders resolved");
+                    break;
+                }
+
+                // Recurse into nested structures (request blocks, responses, …).
+                case HclObject nested:
+                    ResolveObject(nested, fieldPath, variables, changes, warnings);
+                    break;
+
+                case HclArray array:
+                    foreach (var item in array.Items)
+                    {
+                        if (item.Value is HclObject element)
+                            ResolveObject(element, fieldPath, variables, changes, warnings);
+                    }
+                    break;
+            }
         }
     }
 }

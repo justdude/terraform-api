@@ -32,6 +32,7 @@ public class SyncOrchestratorServiceTests
             new ApimTemplateProfileDetectorService(),
             commentBuilder,
             hclWriter,
+            writer,
             resolver,
             NullLogger<AppendOnlySynchronizerService>.Instance);
 
@@ -267,6 +268,30 @@ public class SyncOrchestratorServiceTests
         Assert.Contains("\"bpc-dev\"", result.TerraformConfig);
         // Variables without values produce warnings and stay templated.
         Assert.NotEmpty(result.Warnings);
+    }
+
+    [Fact]
+    public void ApplyProfile_Resolve_ResolvesPolicyHeredocPlaceholders()
+    {
+        var result = _orchestrator.ApplyProfile(
+            LoadFixture(),
+            profile: null,
+            new ApplyProfileOptions(),
+            variableValues: new Dictionary<string, string>
+            {
+                ["frontend_host"] = "portal",
+                ["env"] = "dev",
+                ["company_domain"] = "company.com",
+                ["local_dev_host"] = "localhost",
+                ["local_dev_port"] = "3000"
+            },
+            resolve: true);
+
+        Assert.True(result.Success);
+        // CORS origins inside the policy heredoc are resolved.
+        Assert.Contains("https://portal.dev.company.com", result.TerraformConfig);
+        Assert.Contains("https://localhost:3000", result.TerraformConfig);
+        Assert.Contains(result.AppliedChanges, c => c.Contains("heredoc placeholders resolved"));
     }
 
     [Fact]

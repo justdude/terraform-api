@@ -34,6 +34,7 @@ public class FinalAcceptanceTests
             new ApimTemplateProfileDetectorService(),
             commentBuilder,
             hclWriter,
+            writer,
             resolver,
             NullLogger<AppendOnlySynchronizerService>.Instance);
 

@@ -184,6 +184,59 @@ public class HclWriterTests
     }
 
     [Fact]
+    public void Write_CleanMultiLineChildUnderDirtyParent_ReindentedConsistently()
+    {
+        // Source uses 4-space indentation; the canonical writer uses 2.
+        // When the parent object is dirty (new sibling added), the clean
+        // multi-line child slice must be re-indented to the new depth.
+        var src = "group = {\n    nested = {\n        a = 1\n        b = 2\n    }\n}";
+        var doc = _parser.Parse(src);
+
+        var group = Assert.IsType<HclObject>(doc.RootAssignments.Single().Value);
+        group.Items.Add(new HclAssignment
+        {
+            Key = "added",
+            Value = new HclLiteral { RawValue = "x", Kind = HclLiteralKind.String }
+        });
+
+        var output = _writer.Write(doc);
+
+        // The preserved child is anchored at the canonical depth (2) and its
+        // internal relative indentation (4-space steps) is kept intact.
+        Assert.Contains("\n  nested = {\n      a = 1\n      b = 2\n  }", output.Replace("\r", ""));
+
+        // Output stays valid and complete.
+        var reparsed = _parser.Parse(output);
+        var reGroup = Assert.IsType<HclObject>(reparsed.RootAssignments.Single().Value);
+        Assert.NotNull(reGroup.Get("nested"));
+        Assert.NotNull(reGroup.Get("added"));
+    }
+
+    [Fact]
+    public void Write_CleanHeredocChildUnderDirtyParent_NeverShifted()
+    {
+        // Heredoc bodies are whitespace-significant; the closing marker of a
+        // plain << heredoc must remain at column 0 even when re-parented.
+        var src = "group = {\n    policy = <<XML\n<a/>\nXML\n}";
+        var doc = _parser.Parse(src);
+
+        var group = Assert.IsType<HclObject>(doc.RootAssignments.Single().Value);
+        group.Items.Add(new HclAssignment
+        {
+            Key = "added",
+            Value = new HclLiteral { RawValue = "x", Kind = HclLiteralKind.String }
+        });
+
+        var output = _writer.Write(doc);
+
+        Assert.Contains("\nXML", output.Replace("\r", ""));
+        var reparsed = _parser.Parse(output);
+        var reGroup = Assert.IsType<HclObject>(reparsed.RootAssignments.Single().Value);
+        var heredoc = Assert.IsType<HclHeredoc>(reGroup.Get("policy"));
+        Assert.Equal("<a/>", heredoc.Content);
+    }
+
+    [Fact]
     public void Write_BareExpression_NoQuotes()
     {
         var doc = _parser.Parse("protocols = var.protocols");
