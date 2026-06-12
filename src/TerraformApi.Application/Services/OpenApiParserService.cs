@@ -50,11 +50,15 @@ public sealed class OpenApiParserService : IOpenApiParser
             throw new InvalidOperationException($"Failed to parse OpenAPI document: {errors}");
         }
 
+        // Missing settings become placeholder tags ({environment}, {api-group}, â€¦)
+        // so generation never blocks. Idempotent when already normalized upstream.
+        (settings, _) = ApimPlaceholders.Normalize(settings);
+
         var apiTitle = openApiDoc.Info?.Title ?? "Untitled API";
         var apiName = settings.ApiName ?? _namingValidator.SanitizeApiName(apiTitle);
         var apiDisplayName = settings.ApiDisplayName ?? apiTitle;
         var operationPrefix = settings.OperationPrefix ?? _namingValidator.SanitizeApiName(apiTitle);
-        var env = settings.Environment;
+        var env = settings.Environment!;
 
         var policy = settings.IncludeCorsPolicy
             ? BuildCorsPolicy(settings)
@@ -65,11 +69,13 @@ public sealed class OpenApiParserService : IOpenApiParser
 
         var api = new ApimApi
         {
-            ApimResourceGroupName = settings.StageGroupName,
-            ApimName = settings.ApimName,
+            ApimResourceGroupName = settings.StageGroupName!,
+            ApimName = settings.ApimName!,
             Name = $"{apiName}-{env}",
             DisplayName = $"{apiDisplayName} - {env}",
-            Path = _namingValidator.SanitizeApiPath(apiPath),
+            Path = ApimPlaceholders.ContainsPlaceholder(apiPath)
+                ? apiPath
+                : _namingValidator.SanitizeApiPath(apiPath),
             ServiceUrl = serviceUrl,
             Protocols = ["https"],
             Revision = settings.Revision,
@@ -96,7 +102,11 @@ public sealed class OpenApiParserService : IOpenApiParser
                     var opIdRaw = op.OperationId
                         ?? $"{method.ToLowerInvariant()}-{urlTemplate.Replace("/", "-").Replace("{", "").Replace("}", "").Trim('-')}";
 
-                    var operationId = _namingValidator.SanitizeOperationId($"{operationPrefix}-{opIdRaw}-{env}");
+                    // Keep placeholder tags intact â€” the sanitizer would strip
+                    // their braces. Only the spec-derived part is sanitized then.
+                    var operationId = ApimPlaceholders.ContainsPlaceholder($"{operationPrefix}-{env}")
+                        ? $"{operationPrefix}-{_namingValidator.SanitizeOperationId(opIdRaw)}-{env}"
+                        : _namingValidator.SanitizeOperationId($"{operationPrefix}-{opIdRaw}-{env}");
                     var displayName = op.Summary ?? op.OperationId ?? $"{method} {pathItem.Key}";
 
                     var requests = BuildRequests(op, pathItem.Value);
@@ -106,8 +116,8 @@ public sealed class OpenApiParserService : IOpenApiParser
                     operations.Add(new ApimApiOperation
                     {
                         OperationId = operationId,
-                        ApimResourceGroupName = settings.StageGroupName,
-                        ApimName = settings.ApimName,
+                        ApimResourceGroupName = settings.StageGroupName!,
+                        ApimName = settings.ApimName!,
                         ApiName = $"{apiName}-{env}",
                         DisplayName = displayName,
                         Method = method,
@@ -127,8 +137,8 @@ public sealed class OpenApiParserService : IOpenApiParser
             var productId = settings.ProductId ?? $"{apiName}-{env}";
             products.Add(new ApimProduct
             {
-                ApimResourceGroupName = settings.StageGroupName,
-                ApimName = settings.ApimName,
+                ApimResourceGroupName = settings.StageGroupName!,
+                ApimName = settings.ApimName!,
                 ProductId = productId,
                 DisplayName = settings.ProductDisplayName ?? $"{apiDisplayName} - {env}",
                 SubscriptionRequired = settings.ProductSubscriptionRequired,
@@ -141,7 +151,7 @@ public sealed class OpenApiParserService : IOpenApiParser
 
         return new ApimConfiguration
         {
-            ApiGroupName = settings.ApiGroupName,
+            ApiGroupName = settings.ApiGroupName!,
             Products = products,
             Api = api,
             ApiOperations = operations

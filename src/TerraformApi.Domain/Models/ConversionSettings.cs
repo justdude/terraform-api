@@ -1,18 +1,24 @@
 namespace TerraformApi.Domain.Models;
 
+/// <summary>
+/// APIM conversion settings. Every identity/routing setting is optional:
+/// values the caller does not provide are normalized to placeholder tags
+/// (see <see cref="ApimPlaceholders"/>) so generation never blocks — the user
+/// replaces the tags in the output later.
+/// </summary>
 public sealed record ConversionSettings
 {
-    public required string Environment { get; init; }
-    public required string ApiGroupName { get; init; }
-    public required string StageGroupName { get; init; }
-    public required string ApimName { get; init; }
+    public string? Environment { get; init; }
+    public string? ApiGroupName { get; init; }
+    public string? StageGroupName { get; init; }
+    public string? ApimName { get; init; }
     public string? ApiName { get; init; }
     public string? ApiDisplayName { get; init; }
-    public required string ApiPathPrefix { get; init; }
-    public required string ApiPathSuffix { get; init; }
-    public required string ApiGatewayHost { get; init; }
+    public string? ApiPathPrefix { get; init; }
+    public string? ApiPathSuffix { get; init; }
+    public string? ApiGatewayHost { get; init; }
     public string ApiVersion { get; init; } = "v1";
-    public required string BackendServicePath { get; init; }
+    public string? BackendServicePath { get; init; }
     public string Revision { get; init; } = "1";
     public string? ProductId { get; init; }
     public string? FrontendHost { get; init; }

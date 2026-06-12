@@ -17,6 +17,7 @@ public static class DependencyInjection
         services.AddSingleton<IEnvironmentTransformer, EnvironmentTransformerService>();
         services.AddSingleton<ITerraformOperationsParser, TerraformOperationsParserService>();
         services.AddSingleton<IOpenApiOperationsFetcher, OpenApiOperationsFetcherService>();
+        services.AddSingleton<IApimProductGenerator, ApimProductGeneratorService>();
 
         // HCL AST pipeline (sync engine)
         services.AddSingleton<IHclParser, HclParserService>();

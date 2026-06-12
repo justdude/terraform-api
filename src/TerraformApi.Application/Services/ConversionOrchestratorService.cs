@@ -43,6 +43,10 @@ public sealed class ConversionOrchestratorService : IConversionOrchestrator
 
         try
         {
+            // Missing settings become {tag} placeholders instead of errors —
+            // the generated file gets a header explaining each one.
+            (settings, var defaultedTags) = ApimPlaceholders.Normalize(settings);
+
             var validationErrors = ValidateSettings(settings);
             if (validationErrors.Count > 0)
             {
@@ -57,7 +61,7 @@ public sealed class ConversionOrchestratorService : IConversionOrchestrator
 
             warnings.AddRange(ValidateGeneratedNames(configuration));
 
-            var terraform = _generator.Generate(configuration);
+            var terraform = ApimPlaceholders.BuildHeaderComment(defaultedTags) + _generator.Generate(configuration);
 
             return new ConversionResult
             {
@@ -95,6 +99,10 @@ public sealed class ConversionOrchestratorService : IConversionOrchestrator
 
         try
         {
+            (settings, var defaultedTags) = ApimPlaceholders.Normalize(settings);
+            if (defaultedTags.Count > 0)
+                warnings.AddRange(defaultedTags.Select(t => $"Setting not provided — placeholder tag {t} used"));
+
             var validationErrors = ValidateSettings(settings);
             if (validationErrors.Count > 0)
             {
@@ -140,9 +148,14 @@ public sealed class ConversionOrchestratorService : IConversionOrchestrator
     {
         var errors = new List<string>();
 
-        var rgResult = _namingValidator.ValidateResourceGroupName(settings.StageGroupName);
-        if (!rgResult.IsValid)
-            errors.AddRange(rgResult.Errors.Select(e => $"StageGroupName: {e}"));
+        // Placeholder tags intentionally violate naming rules — skip validation
+        // for values the user will replace later.
+        if (!ApimPlaceholders.ContainsPlaceholder(settings.StageGroupName))
+        {
+            var rgResult = _namingValidator.ValidateResourceGroupName(settings.StageGroupName!);
+            if (!rgResult.IsValid)
+                errors.AddRange(rgResult.Errors.Select(e => $"StageGroupName: {e}"));
+        }
 
         if (!string.IsNullOrEmpty(settings.ApiName))
         {
@@ -164,16 +177,27 @@ public sealed class ConversionOrchestratorService : IConversionOrchestrator
     {
         var warnings = new List<string>();
 
-        var apiNameResult = _namingValidator.ValidateApiName(configuration.Api.Name);
-        if (!apiNameResult.IsValid)
-            warnings.AddRange(apiNameResult.Errors.Select(e => $"Generated API name warning: {e}"));
+        // Values containing placeholder tags are validated after the user
+        // replaces the tags — skip them here to avoid false warnings.
+        if (!ApimPlaceholders.ContainsPlaceholder(configuration.Api.Name))
+        {
+            var apiNameResult = _namingValidator.ValidateApiName(configuration.Api.Name);
+            if (!apiNameResult.IsValid)
+                warnings.AddRange(apiNameResult.Errors.Select(e => $"Generated API name warning: {e}"));
+        }
 
-        var pathResult = _namingValidator.ValidateApiPath(configuration.Api.Path);
-        if (!pathResult.IsValid)
-            warnings.AddRange(pathResult.Errors.Select(e => $"Generated API path warning: {e}"));
+        if (!ApimPlaceholders.ContainsPlaceholder(configuration.Api.Path))
+        {
+            var pathResult = _namingValidator.ValidateApiPath(configuration.Api.Path);
+            if (!pathResult.IsValid)
+                warnings.AddRange(pathResult.Errors.Select(e => $"Generated API path warning: {e}"));
+        }
 
         foreach (var op in configuration.ApiOperations)
         {
+            if (ApimPlaceholders.ContainsPlaceholder(op.OperationId))
+                continue;
+
             var opResult = _namingValidator.ValidateOperationId(op.OperationId);
             if (!opResult.IsValid)
                 warnings.AddRange(opResult.Errors.Select(e => $"Operation '{op.OperationId}': {e}"));

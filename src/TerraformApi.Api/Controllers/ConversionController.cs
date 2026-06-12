@@ -193,14 +193,8 @@ public sealed class ConversionController : ControllerBase
     [ProducesResponseType(typeof(ValidateResponse), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Validate([FromBody] ConvertRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.Environment))
-        {
-            return BadRequest(new ValidateResponse
-            {
-                IsValid = false,
-                Errors = ["Environment is required."]
-            });
-        }
+        // Same default as the validate_openapi_for_apim MCP tool.
+        var environment = string.IsNullOrWhiteSpace(request.Environment) ? "dev" : request.Environment;
 
         var errors = new List<string>();
 
@@ -248,7 +242,7 @@ public sealed class ConversionController : ControllerBase
                     {
                         var opId = op.Value.OperationId ?? $"{op.Key}-{path.Key}";
                         var sanitized = _namingValidator.SanitizeOperationId(opId);
-                        var sanitizedWithEnv = $"{sanitized}-{request.Environment}";
+                        var sanitizedWithEnv = $"{sanitized}-{environment}";
                         var validationResult = _namingValidator.ValidateOperationId(sanitizedWithEnv);
 
                         if (!validationResult.IsValid)

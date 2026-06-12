@@ -50,7 +50,11 @@ public sealed class SyncOrchestratorService : ISyncOrchestrator
     {
         try
         {
-            var configuration = _openApiParser.Parse(request.OpenApiJson, request.Settings);
+            // Missing settings become {tag} placeholders; surfaced as warnings
+            // so the caller knows which values to replace in the output.
+            var (settings, defaultedTags) = Domain.Models.ApimPlaceholders.Normalize(request.Settings);
+
+            var configuration = _openApiParser.Parse(request.OpenApiJson, settings);
 
             ParsedApimDocument parsed;
             if (string.IsNullOrWhiteSpace(request.ExistingTerraform))
@@ -84,6 +88,15 @@ public sealed class SyncOrchestratorService : ISyncOrchestrator
 
             if (!result.Success)
                 return result;
+
+            foreach (var tag in defaultedTags)
+            {
+                result.Report.Warnings.Add(new SyncWarning
+                {
+                    Message = $"Setting not provided — placeholder tag {tag} used; replace it before applying",
+                    Kind = SyncWarningKind.SkippedFieldDueToPolicy
+                });
+            }
 
             var graph = _graphBuilder.BuildFromSyncReport(result.Report, configuration.ApiGroupName);
             return result with { ExecutionGraph = graph };
@@ -192,9 +205,9 @@ public sealed class SyncOrchestratorService : ISyncOrchestrator
         };
     }
 
-    private static SyncReport EmptyReport(string apiGroupName) => new()
+    private static SyncReport EmptyReport(string? apiGroupName) => new()
     {
         GeneratedAt = DateTime.UtcNow,
-        ApiGroupName = apiGroupName
+        ApiGroupName = apiGroupName ?? Domain.Models.ApimPlaceholders.ApiGroupName
     };
 }

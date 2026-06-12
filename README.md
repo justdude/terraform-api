@@ -37,9 +37,53 @@ tests/
 - **Analyze** — inspect an existing Terraform file: API groups, operation counts, detected `${...}` placeholder style, duplicates
 - **Template profiles** — templatize literals (`apim-company-dev` → `${apim_name}`) or resolve placeholders for a specific environment
 - **Swagger UI** at `/swagger` — interactive documentation and try-it-out for every endpoint (controller-based API with XML doc comments)
+- **Placeholder tags for missing settings** — every APIM setting is optional; anything you don't provide is generated as a replaceable tag like `{api-group}` with an explanatory header comment (see below)
+- **Product generation** — standalone APIM `product = [ ... ]` block generation via `/api/generate-product`
 - Web UI with drag-and-drop file upload, no Node.js required
-- **MCP server** with 10 tools for AI assistant integration (VS Code, Claude Code, Claude Desktop) — shares the exact same Application-layer services and input validation as the HTTP API
+- **MCP server** with 11 tools for AI assistant integration (VS Code, Claude Code, Claude Desktop) — every HTTP endpoint has a matching MCP tool backed by the same Application-layer service (see the parity table below)
 - Docker-ready for cloud deployment
+
+## API ⇄ MCP parity
+
+The HTTP API and the MCP server are two faces of the same engine — each endpoint maps 1:1 to an MCP tool and both call the identical Application-layer service:
+
+| HTTP endpoint | MCP tool | Shared service |
+|---|---|---|
+| `POST /api/convert` | `convert_openapi_to_terraform` | `IConversionOrchestrator.Convert` |
+| `POST /api/convert/update` | `update_terraform_from_openapi` | `IConversionOrchestrator.Update` |
+| `POST /api/sync` | `sync_openapi_with_terraform` | `ISyncOrchestrator.Sync` |
+| `POST /api/analyze-terraform` | `analyze_terraform_apim` | `ISyncOrchestrator.Analyze` |
+| `POST /api/apply-template-profile` | `apply_template_profile` | `ISyncOrchestrator.ApplyProfile` |
+| `POST /api/transform-environment` | `transform_environment` | `IEnvironmentTransformer.Transform` |
+| `POST /api/fetch-operations` | `fetch_openapi_operations` | `IOpenApiOperationsFetcher.ParseOperations` |
+| `POST /api/parse-terraform-operations` | `parse_terraform_operations` | `ITerraformOperationsParser.Parse` |
+| `POST /api/validate` | `validate_openapi_for_apim` | `IApimNamingValidator` |
+| `POST /api/generate-product` | `generate_apim_product` | `IApimProductGenerator.Generate` |
+| `GET /api/environments` | `list_environment_presets` | `IOptions<ApimEnvironments>` |
+| `GET /api/health` | — (HTTP-specific liveness probe) | — |
+
+Both hosts resolve `openApiJson`/`openApiUrl` input through the same `OpenApiDocumentResolver`, so validation and error messages are identical.
+
+## Placeholder tags for missing settings
+
+Every APIM setting (`environment`, `apiGroupName`, `stageGroupName`, `apimName`, `apiPathPrefix`, `apiPathSuffix`, `apiGatewayHost`, `backendServicePath`) is **optional** in both the API and the MCP tools. Anything you don't provide is generated with a replaceable tag, and the file starts with a comment explaining each one:
+
+```hcl
+# ============================================================================
+# GENERATED WITH PLACEHOLDER TAGS — replace them before applying:
+#   {api-group}              - Terraform variable group name for the API (e.g. my-api-group)
+#   {environment}            - target environment name (e.g. dev, staging, prod)
+#   {stage-group-name}       - Azure resource group of the APIM instance (e.g. rg-apim-dev)
+# ============================================================================
+{api-group} = {
+  product = []
+  api = [
+    {
+      apim_resource_group_name         = "{stage-group-name}"
+      ...
+```
+
+The idea: generation never blocks on missing input — paste an OpenAPI spec, get Terraform immediately, and find/replace the tags later. Naming validation is skipped for tag values and re-applies once you substitute real names.
 
 ## Append-only sync
 
@@ -528,6 +572,7 @@ src/TerraformApi.Mcp/
     SyncTool.cs                   # sync_openapi_with_terraform
     AnalyzeTool.cs                # analyze_terraform_apim
     ApplyTemplateProfileTool.cs   # apply_template_profile
+    ProductTool.cs                # generate_apim_product
   appsettings.json                # Environment presets (same as API project)
 ```
 
@@ -542,6 +587,7 @@ src/TerraformApi.Mcp/
 | `sync_openapi_with_terraform` | **Append-only sync**: appends missing operations in the file's detected templating style, preserves everything else, returns a full diff report. Configurable per-field merge policy and match strategy |
 | `analyze_terraform_apim` | Read-only analysis of an existing Terraform file: API groups, operation counts, detected templating profile, referenced `${...}` variables, duplicates |
 | `apply_template_profile` | One-time `Templatize` (literals → `${...}` placeholders) or `Resolve` (placeholders → literals for a given environment) |
+| `generate_apim_product` | Generates a standalone APIM `product = [ ... ]` block; missing settings become `{tag}` placeholders |
 | `validate_openapi_for_apim` | Validates an OpenAPI spec against APIM naming rules (no Terraform output) |
 | `list_environment_presets` | Lists configured APIM environment presets (resource groups, hosts, etc.) |
 | `transform_environment` | Transforms Terraform from one APIM environment to another, with optional merge/sync against existing target |
@@ -550,29 +596,47 @@ src/TerraformApi.Mcp/
 
 #### `convert_openapi_to_terraform`
 
-**Required parameters:**
+**Required:** one of `openApiJson` / `openApiUrl`.
 
-| Parameter | Description | Example |
+**All APIM settings are optional** — missing ones become placeholder tags in the output (with an explanatory header comment):
+
+| Parameter | Default when omitted | Example value |
 |---|---|---|
-| `openApiJson` | OpenAPI 3.x JSON string | `{"openapi":"3.0.1",...}` |
-| `environment` | Target environment | `"dev"`, `"staging"`, `"prod"` |
-| `apiGroupName` | Terraform variable group name | `"my-api-group"` |
-| `stageGroupName` | Azure resource group name | `"rg-apim-dev"` |
-| `apimName` | APIM instance name | `"apim-company-dev"` |
-| `apiPathPrefix` | API path prefix | `"myapp"` |
-| `apiPathSuffix` | API path suffix | `"api"` |
-| `apiGatewayHost` | Gateway hostname | `"api.dev.company.com"` |
-| `backendServicePath` | Backend service path | `"my-service"` |
+| `environment` | `{environment}` | `"dev"`, `"staging"`, `"prod"` |
+| `apiGroupName` | `{api-group}` | `"my-api-group"` |
+| `stageGroupName` | `{stage-group-name}` | `"rg-apim-dev"` |
+| `apimName` | `{apim-name}` | `"apim-company-dev"` |
+| `apiPathPrefix` | `{api-path-prefix}` | `"myapp"` |
+| `apiPathSuffix` | `{api-path-suffix}` | `"api"` |
+| `apiGatewayHost` | `{api-gateway-host}` | `"api.dev.company.com"` |
+| `backendServicePath` | `{backend-service-path}` | `"my-service"` |
 
-**Optional parameters:** `apiName`, `apiDisplayName`, `apiVersion` (default `"v1"`), `revision` (default `"1"`), `subscriptionRequired` (default `false`), `includeCorsPolicy` (default `false`), `frontendHost`, `companyDomain`, `localDevHost`, `localDevPort`, `productId`, `generateProduct` (default `false`), `productDisplayName`, `productDescription`, `productSubscriptionRequired`, `productApprovalRequired`
+**Other optional parameters:** `apiName`, `apiDisplayName`, `apiVersion` (default `"v1"`), `revision` (default `"1"`), `subscriptionRequired` (default `false`), `includeCorsPolicy` (default `false`), `frontendHost`, `companyDomain`, `localDevHost`, `localDevPort`, `productId`, `generateProduct` (default `false`), `productDisplayName`, `productDescription`, `productSubscriptionRequired`, `productApprovalRequired`, `templateProfileName`, `addOperationComments`, `addReplaceBeforeApplyHeader`, `apiGroupParentPathJson`
 
 #### `update_terraform_from_openapi`
 
-Same required parameters as `convert_openapi_to_terraform`, plus:
+Same parameters as `convert_openapi_to_terraform` (settings optional, same placeholder defaults), plus:
 
-| Parameter | Description |
+| Parameter | Required | Description |
+|---|---|---|
+| `existingTerraform` | Yes | The existing Terraform HCL to merge into |
+
+#### `generate_apim_product`
+
+All parameters optional — missing settings become placeholder tags:
+
+| Parameter | Default when omitted |
 |---|---|
-| `existingTerraform` | The existing Terraform HCL to merge into |
+| `productId` | `{product-id}` |
+| `displayName` | `{product-display-name}` |
+| `apimResourceGroupName` | `{stage-group-name}` |
+| `apimName` | `{apim-name}` |
+| `description` | `""` |
+| `subscriptionRequired` / `approvalRequired` | `false` |
+| `published` | `true` |
+| `subscriptionsLimit` | `null` |
+
+Returns JSON: `{ success, terraformConfig, defaultedTags, errors }`.
 
 #### `validate_openapi_for_apim`
 

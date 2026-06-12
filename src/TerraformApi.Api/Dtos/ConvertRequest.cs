@@ -1,7 +1,11 @@
-using System.ComponentModel.DataAnnotations;
-
 namespace TerraformApi.Api.Dtos;
 
+/// <summary>
+/// APIM conversion settings. All identity/routing settings are optional —
+/// anything not provided is generated with a placeholder tag (e.g. {api-group})
+/// that the caller replaces later; the generated file starts with a comment
+/// explaining every tag used.
+/// </summary>
 public class ConvertRequest
 {
     /// <summary>
@@ -14,34 +18,34 @@ public class ConvertRequest
     /// </summary>
     public string? OpenApiUrl { get; init; }
 
-    [Required]
-    public required string Environment { get; init; }
+    /// <summary>Target environment. Defaults to the {environment} tag.</summary>
+    public string? Environment { get; init; }
 
-    [Required]
-    public required string ApiGroupName { get; init; }
+    /// <summary>Terraform variable group name. Defaults to the {api-group} tag.</summary>
+    public string? ApiGroupName { get; init; }
 
-    [Required]
-    public required string StageGroupName { get; init; }
+    /// <summary>APIM resource group. Defaults to the {stage-group-name} tag.</summary>
+    public string? StageGroupName { get; init; }
 
-    [Required]
-    public required string ApimName { get; init; }
+    /// <summary>APIM instance name. Defaults to the {apim-name} tag.</summary>
+    public string? ApimName { get; init; }
 
     public string? ApiName { get; init; }
     public string? ApiDisplayName { get; init; }
 
-    [Required]
-    public required string ApiPathPrefix { get; init; }
+    /// <summary>API path prefix. Defaults to the {api-path-prefix} tag.</summary>
+    public string? ApiPathPrefix { get; init; }
 
-    [Required]
-    public required string ApiPathSuffix { get; init; }
+    /// <summary>API path suffix. Defaults to the {api-path-suffix} tag.</summary>
+    public string? ApiPathSuffix { get; init; }
 
-    [Required]
-    public required string ApiGatewayHost { get; init; }
+    /// <summary>Gateway hostname. Defaults to the {api-gateway-host} tag.</summary>
+    public string? ApiGatewayHost { get; init; }
 
     public string ApiVersion { get; init; } = "v1";
 
-    [Required]
-    public required string BackendServicePath { get; init; }
+    /// <summary>Backend service path. Defaults to the {backend-service-path} tag.</summary>
+    public string? BackendServicePath { get; init; }
 
     public string Revision { get; init; } = "1";
     public string? ProductId { get; init; }

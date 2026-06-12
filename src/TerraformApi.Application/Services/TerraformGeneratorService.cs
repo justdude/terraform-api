@@ -196,6 +196,18 @@ public sealed class TerraformGeneratorService : ITerraformGenerator
     /// <summary>
     /// Writes all scalar and boolean fields of a product block.
     /// </summary>
+    /// <summary>Generates a standalone <c>product = [ ... ]</c> block for one product.</summary>
+    public string GenerateProductBlock(ApimProduct product)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("product = [");
+        sb.AppendLine("  {");
+        WriteProductBlock(sb, product, "    ");
+        sb.AppendLine("  },");
+        sb.AppendLine("]");
+        return sb.ToString();
+    }
+
     private static void WriteProductBlock(StringBuilder sb, ApimProduct product, string indent)
     {
         sb.AppendLine($"{indent}apim_resource_group_name = \"{product.ApimResourceGroupName}\"");
