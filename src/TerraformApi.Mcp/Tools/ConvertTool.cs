@@ -149,55 +149,10 @@ public static class ConvertTool
 
     /// <summary>
     /// Resolves the OpenAPI specification JSON from either direct input or a URL.
-    /// Uses the DI-injected HttpClient for proper connection pooling.
+    /// Delegates to the shared <see cref="Application.Services.OpenApiDocumentResolver"/>
+    /// so the MCP server and the HTTP API validate input identically.
     /// </summary>
-    internal static async Task<string> ResolveOpenApiJson(
-        HttpClient httpClient, string? openApiJson, string? openApiUrl, CancellationToken cancellationToken = default)
-    {
-        if (!string.IsNullOrWhiteSpace(openApiJson))
-        {
-            return openApiJson;
-        }
-
-        if (!string.IsNullOrWhiteSpace(openApiUrl))
-        {
-            if (!Uri.TryCreate(openApiUrl, UriKind.Absolute, out var uri) ||
-                (uri.Scheme != "http" && uri.Scheme != "https"))
-            {
-                throw new InvalidOperationException(
-                    $"Invalid URL: '{openApiUrl}'. Must be an absolute HTTP(S) URL.");
-            }
-
-            try
-            {
-                var content = await httpClient.GetStringAsync(uri, cancellationToken);
-
-                if (string.IsNullOrWhiteSpace(content))
-                    throw new InvalidOperationException($"Empty response received from {openApiUrl}");
-
-                // Validate it's actually JSON
-                using var document = JsonDocument.Parse(content);
-                _ = document.RootElement;
-
-                return content;
-            }
-            catch (HttpRequestException ex)
-            {
-                throw new InvalidOperationException(
-                    $"Failed to fetch OpenAPI specification from {openApiUrl}: {ex.Message}", ex);
-            }
-            catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
-            {
-                throw new InvalidOperationException(
-                    $"Request to '{openApiUrl}' timed out.", ex);
-            }
-            catch (JsonException ex)
-            {
-                throw new InvalidOperationException(
-                    $"Response from {openApiUrl} is not valid JSON: {ex.Message}", ex);
-            }
-        }
-
-        throw new InvalidOperationException("Either 'openApiJson' or 'openApiUrl' must be provided");
-    }
+    internal static Task<string> ResolveOpenApiJson(
+        HttpClient httpClient, string? openApiJson, string? openApiUrl, CancellationToken cancellationToken = default) =>
+        Application.Services.OpenApiDocumentResolver.ResolveAsync(httpClient, openApiJson, openApiUrl, cancellationToken);
 }

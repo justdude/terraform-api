@@ -1,6 +1,6 @@
 # OpenAPI to Azure APIM Terraform Converter
 
-A .NET 10 Minimal API that converts OpenAPI JSON specifications into Azure API Management (APIM) Terraform configurations. Includes a web frontend with terminal styling, validation against Microsoft APIM naming rules, and support for updating existing Terraform configs while preserving custom operations.
+A .NET 10 controller-based Web API that converts OpenAPI JSON specifications into Azure API Management (APIM) Terraform configurations. Includes interactive Swagger UI at `/swagger`, a web frontend with terminal styling, validation against Microsoft APIM naming rules, and support for updating existing Terraform configs while preserving custom operations.
 
 ## Architecture
 
@@ -10,7 +10,7 @@ Clean Architecture with clearly separated concerns:
 src/
   TerraformApi.Domain/        # Models, interfaces, validation rules — no external dependencies
   TerraformApi.Application/   # Business logic (parser, generator, merger, validator, transformer)
-  TerraformApi.Api/           # Minimal API endpoints + static frontend (wwwroot)
+  TerraformApi.Api/           # MVC controllers + Swagger UI + static frontend (wwwroot)
   TerraformApi.Mcp/           # MCP server for AI assistant integration (stdio transport)
 tests/
   TerraformApi.Application.Tests/   # Unit tests for Application services (173 tests)
@@ -36,8 +36,9 @@ tests/
 - **Append-only sync** — AST-based synchronization of existing Terraform with an OpenAPI spec: new operations are appended in the file's detected templating style, nothing is ever deleted (see below)
 - **Analyze** — inspect an existing Terraform file: API groups, operation counts, detected `${...}` placeholder style, duplicates
 - **Template profiles** — templatize literals (`apim-company-dev` → `${apim_name}`) or resolve placeholders for a specific environment
+- **Swagger UI** at `/swagger` — interactive documentation and try-it-out for every endpoint (controller-based API with XML doc comments)
 - Web UI with drag-and-drop file upload, no Node.js required
-- **MCP server** with 10 tools for AI assistant integration (VS Code, Claude Code, Claude Desktop)
+- **MCP server** with 10 tools for AI assistant integration (VS Code, Claude Code, Claude Desktop) — shares the exact same Application-layer services and input validation as the HTTP API
 - Docker-ready for cloud deployment
 
 ## Append-only sync

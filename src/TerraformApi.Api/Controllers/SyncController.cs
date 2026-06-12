@@ -1,16 +1,20 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Mvc;
 using TerraformApi.Api.Dtos;
 using TerraformApi.Domain.Interfaces;
 using TerraformApi.Domain.Models.Sync;
 
-namespace TerraformApi.Api.Endpoints;
+namespace TerraformApi.Api.Controllers;
 
 /// <summary>
-/// Endpoints for the append-only sync engine:
-/// POST /api/sync, POST /api/analyze-terraform, POST /api/apply-template-profile.
+/// Append-only sync engine endpoints: sync, read-only analysis, and template
+/// profile application (Templatize ⇄ Resolve).
 /// </summary>
-public static class SyncEndpoints
+[ApiController]
+[Route("api")]
+[Produces("application/json")]
+public sealed class SyncController : ControllerBase
 {
     /// <summary>Domain enums (diff kinds, severities, confidence) serialize as strings.</summary>
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -19,37 +23,26 @@ public static class SyncEndpoints
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
-    public static void MapSyncEndpoints(this WebApplication app)
-    {
-        var api = app.MapGroup("/api");
+    private readonly ISyncOrchestrator _orchestrator;
 
-        api.MapPost("/sync", Sync)
-            .WithName("SyncOpenApiWithTerraform")
-            .WithDescription("Append-only sync of an existing Terraform config with an OpenAPI spec: " +
-                             "new operations are appended in the file's detected templating style, " +
-                             "existing operations are never modified or removed (configurable per-field policy). " +
-                             "Empty existingTerraform generates a fresh config from the template profile.")
-            .ProducesProblem(400);
+    public SyncController(ISyncOrchestrator orchestrator) => _orchestrator = orchestrator;
 
-        api.MapPost("/analyze-terraform", Analyze)
-            .WithName("AnalyzeTerraformApim")
-            .WithDescription("Analyzes an existing APIM Terraform config without modifying it: " +
-                             "API groups, operation counts, detected templating profile, " +
-                             "referenced variables, and duplicate operations.")
-            .ProducesProblem(400);
-
-        api.MapPost("/apply-template-profile", ApplyProfile)
-            .WithName("ApplyTemplateProfile")
-            .WithDescription("One-time conversion between literal and templated styles: " +
-                             "direction 'Templatize' replaces literals with profile placeholders, " +
-                             "'Resolve' substitutes variable values into placeholders.")
-            .ProducesProblem(400);
-    }
-
-    private static IResult Sync(SyncRequestDto request, ISyncOrchestrator orchestrator)
+    /// <summary>
+    /// Append-only sync of an existing Terraform config with an OpenAPI spec.
+    /// </summary>
+    /// <remarks>
+    /// New operations are appended in the file's detected templating style;
+    /// existing operations are never modified or removed (configurable per-field
+    /// policy). Empty <c>existingTerraform</c> generates a fresh config from the
+    /// template profile.
+    /// </remarks>
+    [HttpPost("sync")]
+    [ProducesResponseType(typeof(SyncResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(SyncResult), StatusCodes.Status400BadRequest)]
+    public IActionResult Sync([FromBody] SyncRequestDto request)
     {
         if (string.IsNullOrWhiteSpace(request.OpenApiJson))
-            return Results.BadRequest(new { error = "OpenAPI JSON is required." });
+            return BadRequest(new { error = "OpenAPI JSON is required." });
 
         ApimTemplateProfile? overrideProfile = null;
         if (request.TemplateProfileName is { Length: > 0 } name && name != "Auto")
@@ -57,7 +50,7 @@ public static class SyncEndpoints
             overrideProfile = ApimTemplateProfile.GetByName(name);
             if (overrideProfile is null)
             {
-                return Results.BadRequest(new
+                return BadRequest(new
                 {
                     error = $"Unknown template profile '{name}'.",
                     available = new[] { "Auto", "UserExampleProfile", "ExtendedProfile", "LiteralProfile" }
@@ -72,7 +65,7 @@ public static class SyncEndpoints
             foreach (var (field, value) in request.OperationFieldOverrides)
             {
                 if (!Enum.TryParse<FieldMergePolicy>(value, ignoreCase: true, out var fieldPolicy))
-                    return Results.BadRequest(new { error = $"Unknown field policy '{value}' for '{field}'." });
+                    return BadRequest(new { error = $"Unknown field policy '{value}' for '{field}'." });
                 policy = policy.WithOverride(field, fieldPolicy);
             }
         }
@@ -84,7 +77,7 @@ public static class SyncEndpoints
             foreach (var key in request.MatchKeys ?? ["MethodAndUrl", "OperationId", "Tag"])
             {
                 if (!Enum.TryParse<OperationMatchKey>(key, ignoreCase: true, out var matchKey))
-                    return Results.BadRequest(new { error = $"Unknown match key '{key}'." });
+                    return BadRequest(new { error = $"Unknown match key '{key}'." });
                 keys.Add(matchKey);
             }
             strategy = new OperationMatchStrategy
@@ -94,7 +87,7 @@ public static class SyncEndpoints
             };
         }
 
-        var result = orchestrator.Sync(new SyncRequest
+        var result = _orchestrator.Sync(new SyncRequest
         {
             OpenApiJson = request.OpenApiJson,
             ExistingTerraform = request.ExistingTerraform,
@@ -109,24 +102,36 @@ public static class SyncEndpoints
             }
         });
 
-        return result.Success
-            ? Results.Json(result, JsonOptions)
-            : Results.Json(result, JsonOptions, statusCode: 400);
+        return Json(result, result.Success ? StatusCodes.Status200OK : StatusCodes.Status400BadRequest);
     }
 
-    private static IResult Analyze(AnalyzeTerraformRequest request, ISyncOrchestrator orchestrator)
+    /// <summary>
+    /// Analyzes an existing APIM Terraform config without modifying it:
+    /// API groups, operation counts, detected templating profile, referenced
+    /// variables, and duplicate operations.
+    /// </summary>
+    [HttpPost("analyze-terraform")]
+    [ProducesResponseType(typeof(AnalyzeResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(AnalyzeResult), StatusCodes.Status400BadRequest)]
+    public IActionResult Analyze([FromBody] AnalyzeTerraformRequest request)
     {
-        var result = orchestrator.Analyze(request.Terraform);
-        return result.Success
-            ? Results.Json(result, JsonOptions)
-            : Results.Json(result, JsonOptions, statusCode: 400);
+        var result = _orchestrator.Analyze(request.Terraform);
+        return Json(result, result.Success ? StatusCodes.Status200OK : StatusCodes.Status400BadRequest);
     }
 
-    private static IResult ApplyProfile(ApplyTemplateProfileRequest request, ISyncOrchestrator orchestrator)
+    /// <summary>
+    /// One-time conversion between literal and templated styles:
+    /// direction <c>Templatize</c> replaces literals with profile placeholders,
+    /// <c>Resolve</c> substitutes variable values into placeholders.
+    /// </summary>
+    [HttpPost("apply-template-profile")]
+    [ProducesResponseType(typeof(ApplyProfileResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApplyProfileResult), StatusCodes.Status400BadRequest)]
+    public IActionResult ApplyProfile([FromBody] ApplyTemplateProfileRequest request)
     {
         var resolve = request.Direction.Equals("Resolve", StringComparison.OrdinalIgnoreCase);
         if (!resolve && !request.Direction.Equals("Templatize", StringComparison.OrdinalIgnoreCase))
-            return Results.BadRequest(new { error = "Direction must be 'Templatize' or 'Resolve'." });
+            return BadRequest(new { error = "Direction must be 'Templatize' or 'Resolve'." });
 
         ApimTemplateProfile? profile = null;
         if (!resolve)
@@ -134,7 +139,7 @@ public static class SyncEndpoints
             profile = ApimTemplateProfile.GetByName(request.ProfileName ?? "");
             if (profile is null)
             {
-                return Results.BadRequest(new
+                return BadRequest(new
                 {
                     error = $"Unknown template profile '{request.ProfileName}'.",
                     available = new[] { "UserExampleProfile", "ExtendedProfile", "LiteralProfile" }
@@ -142,15 +147,17 @@ public static class SyncEndpoints
             }
         }
 
-        var result = orchestrator.ApplyProfile(
+        var result = _orchestrator.ApplyProfile(
             request.ExistingTerraform,
             profile,
             new ApplyProfileOptions { OverwriteExisting = request.OverwriteExisting },
             request.VariableContext,
             resolve);
 
-        return result.Success
-            ? Results.Json(result, JsonOptions)
-            : Results.Json(result, JsonOptions, statusCode: 400);
+        return Json(result, result.Success ? StatusCodes.Status200OK : StatusCodes.Status400BadRequest);
     }
+
+    /// <summary>Serializes with the sync engine's enum-as-string options.</summary>
+    private JsonResult Json(object value, int statusCode) =>
+        new(value, JsonOptions) { StatusCode = statusCode };
 }

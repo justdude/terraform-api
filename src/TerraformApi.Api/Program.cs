@@ -1,5 +1,5 @@
+using Microsoft.OpenApi.Models;
 using TerraformApi.Api.Dtos;
-using TerraformApi.Api.Endpoints;
 using TerraformApi.Application;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -12,6 +12,32 @@ builder.Services.Configure<Dictionary<string, ApimEnvironmentConfig>>(
 
 builder.Services.AddHttpClient();
 builder.Services.AddApplicationServices();
+
+// Controller-based API. Automatic model-state validation is suppressed so the
+// actions keep returning the project's own error response shapes instead of
+// the default ProblemDetails.
+builder.Services
+    .AddControllers()
+    .ConfigureApiBehaviorOptions(options => options.SuppressModelStateInvalidFilter = true);
+
+// Swagger / OpenAPI document + UI
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "Terraform API",
+        Version = "v1",
+        Description = "Converts OpenAPI specifications into Azure APIM Terraform configurations. " +
+                      "Includes append-only sync, Terraform analysis, template profiles, " +
+                      "cross-environment transform and APIM naming validation."
+    });
+
+    var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+    if (File.Exists(xmlPath))
+        options.IncludeXmlComments(xmlPath);
+});
 
 // CORS: restrict origins in production, open in development
 builder.Services.AddCors(options =>
@@ -37,8 +63,6 @@ builder.Services.AddCors(options =>
         }
     });
 });
-
-builder.Services.AddEndpointsApiExplorer();
 
 // Limit request body to 10 MB to prevent abuse
 builder.WebHost.ConfigureKestrel(options =>
@@ -74,8 +98,14 @@ if (!app.Environment.IsDevelopment())
 app.UseCors();
 app.UseStaticFiles();
 
-app.MapConversionEndpoints();
-app.MapSyncEndpoints();
+// Swagger UI at /swagger
+app.UseSwagger();
+app.UseSwaggerUI(options =>
+{
+    options.SwaggerEndpoint("/swagger/v1/swagger.json", "Terraform API v1");
+});
+
+app.MapControllers();
 
 app.MapFallbackToFile("index.html");
 
