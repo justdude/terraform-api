@@ -109,7 +109,79 @@ public class ComplexTypeRecognitionTests
         Assert.Equal("Order[]", rep.TypeName);
     }
 
+    [Fact]
+    public void AnyOfSingleBranch_Recognized()
+    {
+        var rep = RequestRepresentation(
+            """{ "anyOf": [ { "$ref": "#/components/schemas/Order" } ] }""");
+        Assert.Equal("Order", rep.SchemaId);
+        Assert.Equal("Order", rep.TypeName);
+    }
+
+    [Fact]
+    public void BareRefToArrayComponent_NoSpuriousArraySuffix()
+    {
+        // Regression: a bare $ref to a component that is itself an array must
+        // NOT gain a "[]" — the component name already denotes the array type.
+        var spec = """
+            {
+              "openapi": "3.0.1",
+              "info": { "title": "T", "version": "1" },
+              "components": {
+                "schemas": {
+                  "Order":     { "type": "object", "properties": { "id": { "type": "string" } } },
+                  "OrderList": { "type": "array", "items": { "$ref": "#/components/schemas/Order" } }
+                }
+              },
+              "paths": {
+                "/orders": {
+                  "post": {
+                    "operationId": "createOrders",
+                    "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrderList" } } } },
+                    "responses": { "201": { "description": "Created" } }
+                  }
+                }
+              }
+            }
+            """;
+        var config = _facade.Parse(spec, Settings());
+        var rep = config.ApiOperations.Single().Requests.Single().Representations.Single();
+
+        Assert.Equal("OrderList", rep.SchemaId);
+        Assert.Equal("OrderList", rep.TypeName); // NOT "OrderList[]"
+    }
+
+    [Fact]
+    public void OneOfWrappedArray_KeepsArraySuffix()
+    {
+        // Regression: an array buried in a single-branch oneOf must keep "[]".
+        var rep = RequestRepresentation(
+            """{ "oneOf": [ { "type": "array", "items": { "$ref": "#/components/schemas/Order" } } ] }""");
+        Assert.Equal("Order", rep.SchemaId);
+        Assert.Equal("Order[]", rep.TypeName);
+    }
+
+    [Fact]
+    public void AllOfWrappedArray_KeepsArraySuffix()
+    {
+        var rep = RequestRepresentation(
+            """{ "allOf": [ { "type": "array", "items": { "$ref": "#/components/schemas/Order" } } ] }""");
+        Assert.Equal("Order", rep.SchemaId);
+        Assert.Equal("Order[]", rep.TypeName);
+    }
+
     // ---------------- IGNORED-by-design shapes ----------------
+
+    [Fact]
+    public void OneOfNamedPlusInlineBranch_IgnoredAsAmbiguousUnion()
+    {
+        // Regression: a union of a named ref + an anonymous inline schema is
+        // ambiguous — it must NOT be mislabeled as the named type.
+        var rep = RequestRepresentation(
+            """{ "oneOf": [ { "$ref": "#/components/schemas/Order" }, { "type": "object", "properties": { "x": { "type": "string" } } } ] }""");
+        Assert.Null(rep.SchemaId);
+        Assert.Equal("application/json", rep.ContentType);
+    }
 
     [Fact]
     public void OneOfMultipleBranches_IgnoredButConversionSucceeds()

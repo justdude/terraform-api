@@ -6,6 +6,13 @@ public sealed record ApimConfiguration
     public List<ApimProduct> Products { get; init; } = [];
     public required ApimApi Api { get; init; }
     public List<ApimApiOperation> ApiOperations { get; init; } = [];
+
+    /// <summary>
+    /// Non-fatal notes about how this configuration was derived from the source
+    /// document (e.g. the OpenAPI 3.1 compatibility-mode downgrade). Surfaced to
+    /// the caller via <see cref="ConversionResult.Warnings"/>.
+    /// </summary>
+    public List<string> Warnings { get; init; } = [];
 }
 
 /// <summary>

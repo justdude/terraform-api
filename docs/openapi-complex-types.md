@@ -27,22 +27,28 @@ gaps that surface as *"can't recognize complex type"*:
 Recognition is implemented in `OpenApiSchemaInterpreter` and applied to both
 request and response representations.
 
+Array-ness is tracked **through** the recursion (not re-derived from the
+top-level node), so the `[]` suffix follows the element wherever the array
+sits, and a bare `$ref` to an array component never gains a spurious one.
+
 ### Recognized (fixed)
 
 | Schema shape | Example | Result |
 |---|---|---|
-| Direct `$ref` | `{ "$ref": "#/components/schemas/Order" }` | `schema_id = "Order"`, `type_name = "Order"` |
-| `allOf` with exactly one `$ref` branch | `{ "allOf": [{ "$ref": ".../Order" }], "nullable": true }` | `schema_id = "Order"` (Swashbuckle's nullable-reference pattern) |
-| Array of `$ref` | `{ "type": "array", "items": { "$ref": ".../Order" } }` | `schema_id = "Order"`, `type_name = "Order[]"` |
-| `oneOf`/`anyOf` with one effective branch | `{ "oneOf": [{ "$ref": ".../Order" }] }` | `schema_id = "Order"` |
+| Direct `$ref` | `{ "$ref": ".../Order" }` | `schema_id = "Order"`, `type_name = "Order"` |
+| Direct `$ref` to an **array component** | `OrderList = {type:array,items:{$ref:Order}}`, body `{ "$ref": ".../OrderList" }` | `schema_id = "OrderList"`, `type_name = "OrderList"` (the component name already denotes the array — **no** `[]`) |
+| `allOf` resolving to one named type | `{ "allOf": [{ "$ref": ".../Order" }], "nullable": true }` | `schema_id = "Order"` (Swashbuckle's nullable-reference pattern; also single-base inheritance) |
+| Inline array of `$ref` | `{ "type": "array", "items": { "$ref": ".../Order" } }` | `schema_id = "Order"`, `type_name = "Order[]"` |
+| Array wrapped in `oneOf`/`anyOf`/`allOf` | `{ "oneOf": [{ "type":"array", "items": {"$ref":".../Order"} }] }` | `schema_id = "Order"`, `type_name = "Order[]"` (suffix preserved) |
+| `oneOf`/`anyOf` where **every** branch is the same type | `{ "anyOf": [{ "$ref": ".../Order" }] }` | `schema_id = "Order"` |
 | Nested wrappers of the above | array of allOf-wrapped ref, etc. (bounded depth 4) | resolved recursively |
 
 ### Ignored by design
 
 | Schema shape | Why it is ignored |
 |---|---|
-| `oneOf`/`anyOf` with **multiple** distinct branches | A union has no single nameable type. Picking one branch would be wrong half the time; APIM's `type_name` is a single identifier. |
-| `allOf` with **multiple** `$ref` branches | The merge of several schemas is a new, *unnamed* composite — naming it after one parent would be misleading. |
+| `oneOf`/`anyOf` where branches differ **or any branch is anonymous** | A union of e.g. `Order` + an inline schema has no single nameable type. It is ignored (not mislabeled as the named branch). |
+| `allOf` merging several **distinct** `$refs` | The merge of several schemas is a new, *unnamed* composite — naming it after one parent would be misleading. |
 | Inline (anonymous) object schemas | There is no name to recognize. The shape exists only in the document. |
 
 **Ignoring never fails the conversion.** The representation keeps its
@@ -53,12 +59,26 @@ documentation value, not correctness.
 
 ### OpenAPI 3.1 compatibility mode
 
-When a document declares `openapi: 3.1.x`, the reader (`OpenApiDocumentReader`)
-parses it in **3.0 compatibility mode** (the version field is substituted for
-parsing only — input is never modified) and records a warning:
+When a document declares `openapi: 3.1.x` **at the document root**, the reader
+(`OpenApiDocumentReader`) parses it in **3.0 compatibility mode** and records a
+warning:
 
 > OpenAPI 3.1 document read in 3.0 compatibility mode — JSON-Schema-only
 > keywords (type arrays, $defs, …) are ignored.
+
+Version detection is **root-anchored and format-agnostic**:
+
+- **JSON** — the root `openapi` property is read with `JsonDocument`; a `3.1`
+  string buried in an `example`/`default` of a genuine 3.0 document never
+  triggers a downgrade.
+- **YAML** — a top-level (`column 0`) `openapi: 3.1.x` line is recognized too,
+  so a pasted YAML 3.1 spec down-levels the same as its JSON form.
+
+The version is substituted for parsing only — the input text is never returned
+modified.
+
+The downgrade sets `OpenApiReadResult.DowngradedFrom31`, which the tolerant
+rule below uses.
 
 This is sound because 3.1 is a JSON-Schema alignment of 3.0: the constructs
 this converter consumes — paths, operations, parameters, request/response
@@ -73,16 +93,32 @@ gracefully:
 
 ### Tolerant parsing rule
 
-The parser no longer fails on *any* diagnostic. The rule is:
+Diagnostics are tolerated **only for down-leveled 3.1 documents**, where
+legitimate 3.1-only keywords (`type: ["string","null"]`, `$defs`, …) surface as
+non-fatal diagnostics after the downgrade. The rule is:
 
-- **Fatal** — the document could not be read at all, or it produced
-  diagnostics **and** yielded no paths (the 1.6 reader is YAML-lenient and
-  coerces garbage input into an empty document instead of throwing).
-- **Tolerated** — diagnostics alongside a usable paths collection
-  (3.1 keywords, vendor extensions, minor spec violations).
+- **Fatal** — the document could not be read at all, or it produced reader
+  errors and was **not** a 3.1 downgrade. A genuine 3.0 spec violation (e.g. a
+  parameter missing its required `name`) stays fatal, so the converter never
+  emits invalid Terraform.
+- **Tolerated** — errors on a document that was down-leveled from 3.1.
 
-Strict checking still exists where it belongs: the `validate_openapi_for_apim`
-MCP tool and `POST /api/validate` surface **all** reader diagnostics.
+As defense in depth, a parameter without a `name` is **skipped** by the builders
+(rather than emitted as an invalid `name = ""` block) even on the tolerated path.
+
+### Surfacing the compatibility warning
+
+The 3.1 compatibility note is threaded to every caller, not just logged:
+
+| Path | Where it appears |
+|---|---|
+| Convert / Update | `ConversionResult.Warnings` → `/api/convert` response, `convert_openapi_to_terraform` output |
+| Sync | `SyncReport.Warnings` |
+| Fetch operations | `OperationsListResult.Warnings` → `fetch_openapi_operations` `warnings`, `/api/fetch-operations` |
+| Validate (strict, all-diagnostics) | `ValidateResponse.Warnings` and a `Warnings:` section in `validate_openapi_for_apim` |
+
+`ApimConfiguration.Warnings` and `OperationsListResult.Warnings` carry the note
+out of the facade; `OpenApiReadResult.DowngradedFrom31` gates the tolerance.
 
 ## Where this lives
 

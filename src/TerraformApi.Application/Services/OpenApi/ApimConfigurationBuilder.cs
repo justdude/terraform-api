@@ -155,6 +155,12 @@ internal static class ApimConfigurationBuilder
 
         foreach (var param in allParameters)
         {
+            // A parameter without a name is malformed (the reader tolerates it
+            // as a diagnostic under 3.1 compat mode) — skip it rather than emit
+            // an invalid `name = ""` block.
+            if (string.IsNullOrEmpty(param.Name))
+                continue;
+
             var apimParam = new ApimParameter
             {
                 Name = param.Name,

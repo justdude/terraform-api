@@ -61,6 +61,16 @@ public static class ValidateTool
             sb.AppendLine($"API Version: {doc.Info?.Version ?? "Unknown"}");
             sb.AppendLine();
 
+            // Surface reader diagnostics (e.g. OpenAPI 3.1 compatibility mode) —
+            // this is the strict, all-diagnostics path.
+            if (read.Warnings.Count > 0)
+            {
+                sb.AppendLine("Warnings:");
+                foreach (var warning in read.Warnings)
+                    sb.AppendLine($"  - {warning}");
+                sb.AppendLine();
+            }
+
             var operations = new List<(string Method, string Path, string OperationId, bool IsValid)>();
 
             foreach (var path in doc.Paths)

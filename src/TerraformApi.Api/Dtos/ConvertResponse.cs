@@ -29,5 +29,9 @@ public sealed class ValidateResponse
 {
     public bool IsValid { get; init; }
     public List<string> Errors { get; init; } = [];
+
+    /// <summary>Non-fatal notes, e.g. the OpenAPI 3.1 compatibility-mode downgrade.</summary>
+    public List<string> Warnings { get; init; } = [];
+
     public ApiSummary? Summary { get; init; }
 }

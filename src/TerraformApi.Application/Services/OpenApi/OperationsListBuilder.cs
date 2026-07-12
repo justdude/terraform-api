@@ -10,7 +10,7 @@ namespace TerraformApi.Application.Services.OpenApi;
 /// </summary>
 internal static class OperationsListBuilder
 {
-    public static OperationsListResult Build(OpenApiDocument document, string sourceUrl)
+    public static OperationsListResult Build(OpenApiDocument document, string sourceUrl, List<string>? warnings = null)
     {
         var apiInfo = new OperationsApiInfo
         {
@@ -51,7 +51,8 @@ internal static class OperationsListBuilder
             Success = true,
             Api = apiInfo,
             TotalOperations = operations.Count,
-            Operations = operations
+            Operations = operations,
+            Warnings = warnings ?? []
         };
     }
 
@@ -67,6 +68,9 @@ internal static class OperationsListBuilder
 
         foreach (var param in allParams)
         {
+            if (string.IsNullOrEmpty(param.Name))
+                continue;
+
             parameters.Add(new ParameterInfo
             {
                 Name = param.Name,

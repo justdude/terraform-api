@@ -15,6 +15,9 @@ public sealed class OperationsListResult
     public OperationsApiInfo? Api { get; init; }
     public int TotalOperations { get; init; }
     public List<OperationInfo> Operations { get; init; } = [];
+
+    /// <summary>Non-fatal notes, e.g. the OpenAPI 3.1 compatibility-mode downgrade.</summary>
+    public List<string> Warnings { get; init; } = [];
 }
 
 /// <summary>

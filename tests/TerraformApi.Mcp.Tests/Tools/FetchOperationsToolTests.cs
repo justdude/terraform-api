@@ -107,6 +107,30 @@ public class FetchOperationsToolTests
     }
 
     [Fact]
+    public void ParseAndFormat_30Spec_NoWarningsField()
+    {
+        var result = FetchOperationsTool.ParseAndFormat(_fetcher, ValidPetStoreSpec);
+        using var doc = JsonDocument.Parse(result);
+
+        Assert.False(doc.RootElement.TryGetProperty("warnings", out _));
+    }
+
+    [Fact]
+    public void ParseAndFormat_31Spec_SurfacesCompatibilityWarning()
+    {
+        const string spec31 = """
+            { "openapi": "3.1.0", "info": { "title": "T", "version": "1" },
+              "paths": { "/x": { "get": { "operationId": "getX", "responses": { "200": { "description": "ok" } } } } } }
+            """;
+
+        var result = FetchOperationsTool.ParseAndFormat(_fetcher, spec31);
+        using var doc = JsonDocument.Parse(result);
+
+        var warnings = doc.RootElement.GetProperty("warnings").EnumerateArray().Select(w => w.GetString());
+        Assert.Contains(warnings, w => w!.Contains("compatibility"));
+    }
+
+    [Fact]
     public void ParseAndFormat_ValidSpec_ContainsApiInfo()
     {
         var result = FetchOperationsTool.ParseAndFormat(_fetcher, ValidPetStoreSpec, "https://example.com/swagger.json");

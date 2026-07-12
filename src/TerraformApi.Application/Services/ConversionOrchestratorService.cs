@@ -59,6 +59,7 @@ public sealed class ConversionOrchestratorService : IConversionOrchestrator
 
             var configuration = _parser.Parse(openApiJson, settings);
 
+            warnings.AddRange(configuration.Warnings);
             warnings.AddRange(ValidateGeneratedNames(configuration));
 
             var terraform = ApimPlaceholders.BuildHeaderComment(defaultedTags) + _generator.Generate(configuration);
@@ -115,6 +116,7 @@ public sealed class ConversionOrchestratorService : IConversionOrchestrator
 
             var configuration = _parser.Parse(openApiJson, settings);
 
+            warnings.AddRange(configuration.Warnings);
             warnings.AddRange(ValidateGeneratedNames(configuration));
 
             var terraform = _merger.Merge(existingTerraform, configuration);

@@ -80,7 +80,8 @@ public static class FetchOperationsTool
         {
             api = result.Api,
             totalOperations = result.TotalOperations,
-            operations = result.Operations
+            operations = result.Operations,
+            warnings = result.Warnings.Count > 0 ? result.Warnings : null
         }, JsonOptions);
     }
 

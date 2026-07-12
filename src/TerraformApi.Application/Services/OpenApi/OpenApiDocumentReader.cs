@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.OpenApi.Models;
 using Microsoft.OpenApi.Readers;
 
@@ -31,12 +32,13 @@ public interface IOpenApiDocumentReader
 /// </summary>
 public sealed partial class OpenApiDocumentReader : IOpenApiDocumentReader
 {
-    /// <summary>
-    /// Matches the document's top-level version declaration for the
-    /// OpenAPI 3.1 compatibility downgrade. Replaced once, on the first match.
-    /// </summary>
+    /// <summary>Rewrites the JSON <c>"openapi": "3.1.x"</c> version value to 3.0.3 (first match only).</summary>
     [System.Text.RegularExpressions.GeneratedRegex("""("openapi"\s*:\s*")3\.1(?:\.\d+)?(")""")]
-    private static partial System.Text.RegularExpressions.Regex OpenApi31VersionRegex();
+    private static partial System.Text.RegularExpressions.Regex JsonVersionRegex();
+
+    /// <summary>Matches a top-level (column 0) YAML <c>openapi: 3.1.x</c> declaration.</summary>
+    [System.Text.RegularExpressions.GeneratedRegex("""(?m)^(openapi\s*:\s*["']?)3\.1(?:\.\d+)?""")]
+    private static partial System.Text.RegularExpressions.Regex YamlVersionRegex();
 
     /// <inheritdoc />
     public OpenApiReadResult Read(string openApiText)
@@ -58,11 +60,9 @@ public sealed partial class OpenApiDocumentReader : IOpenApiDocumentReader
         // converter consumes (paths, operations, parameters, $refs), so we
         // parse it as 3.0 and surface a warning. JSON-Schema-only keywords
         // produce non-fatal diagnostics and are ignored.
-        var effectiveText = openApiText;
-        var versionMatch = OpenApi31VersionRegex().Match(openApiText);
-        if (versionMatch.Success)
+        var (effectiveText, downgraded) = ApplyOpenApi31Downgrade(openApiText);
+        if (downgraded)
         {
-            effectiveText = OpenApi31VersionRegex().Replace(openApiText, "${1}3.0.3${2}", 1);
             warnings.Add("OpenAPI 3.1 document read in 3.0 compatibility mode — " +
                          "JSON-Schema-only keywords (type arrays, $defs, …) are ignored.");
         }
@@ -76,7 +76,8 @@ public sealed partial class OpenApiDocumentReader : IOpenApiDocumentReader
             {
                 Document = document,
                 Errors = diagnostic?.Errors.Select(e => e.Message).ToList() ?? [],
-                Warnings = warnings
+                Warnings = warnings,
+                DowngradedFrom31 = downgraded
             };
         }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
@@ -84,9 +85,47 @@ public sealed partial class OpenApiDocumentReader : IOpenApiDocumentReader
             return new OpenApiReadResult
             {
                 Errors = [ex.Message],
-                Warnings = warnings
+                Warnings = warnings,
+                DowngradedFrom31 = downgraded
             };
         }
+    }
+
+    /// <summary>
+    /// Detects a genuine <b>document-level</b> 3.1 version and, if present,
+    /// rewrites it to 3.0.3 for the 1.6 reader. Detection is anchored to the
+    /// root so a 3.1 string buried in an example/default of a real 3.0 document
+    /// never triggers a downgrade (JSON) and a top-level YAML declaration is
+    /// also recognized (the byte-identical JSON form was already supported).
+    /// </summary>
+    private static (string Text, bool Downgraded) ApplyOpenApi31Downgrade(string text)
+    {
+        // JSON: read the ROOT openapi property precisely; only downgrade when it
+        // is genuinely 3.1. A 3.1 string inside an example never matches.
+        try
+        {
+            using var doc = JsonDocument.Parse(text);
+            if (doc.RootElement.ValueKind == JsonValueKind.Object &&
+                doc.RootElement.TryGetProperty("openapi", out var version) &&
+                version.ValueKind == JsonValueKind.String &&
+                version.GetString() is { } v &&
+                v.StartsWith("3.1", StringComparison.Ordinal))
+            {
+                return (JsonVersionRegex().Replace(text, "${1}3.0.3${2}", 1), true);
+            }
+
+            // Parsed as JSON and the root is not 3.1 → never downgrade.
+            return (text, false);
+        }
+        catch (JsonException)
+        {
+            // Not JSON (YAML or malformed) — fall through to the YAML check.
+        }
+
+        if (YamlVersionRegex().IsMatch(text))
+            return (YamlVersionRegex().Replace(text, "${1}3.0.3", 1), true);
+
+        return (text, false);
     }
 }
 
@@ -101,6 +140,13 @@ public sealed record OpenApiReadResult
 
     /// <summary>Non-fatal notes, e.g. the OpenAPI 3.1 compatibility-mode downgrade.</summary>
     public List<string> Warnings { get; init; } = [];
+
+    /// <summary>
+    /// True when the document declared OpenAPI 3.1 and was read in 3.0
+    /// compatibility mode. Used to decide whether reader diagnostics are
+    /// tolerable (3.1-only keywords) or fatal (genuine 3.0 spec violations).
+    /// </summary>
+    public bool DowngradedFrom31 { get; init; }
 
     /// <summary>True when a document with a usable paths collection was produced.</summary>
     public bool HasUsablePaths => Document?.Paths is { };

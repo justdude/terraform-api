@@ -210,4 +210,26 @@ public class ValidateToolTests
 
         Assert.Contains("failed", result, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public async Task Validate_31Spec_SurfacesCompatibilityWarning()
+    {
+        const string spec31 = """
+            {
+              "openapi": "3.1.0",
+              "info": { "title": "My API", "version": "1.0" },
+              "paths": {
+                "/items": {
+                  "get": { "operationId": "getItems", "summary": "Get items", "responses": { "200": { "description": "OK" } } }
+                }
+              }
+            }
+            """;
+
+        var result = await ValidateTool.Validate(_httpClient, _validator, _documentReader, openApiJson: spec31);
+
+        // The strict, all-diagnostics path must show the compatibility note.
+        Assert.Contains("Warnings:", result);
+        Assert.Contains("compatibility mode", result);
+    }
 }

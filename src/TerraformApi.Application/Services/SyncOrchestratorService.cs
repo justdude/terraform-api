@@ -98,6 +98,16 @@ public sealed class SyncOrchestratorService : ISyncOrchestrator
                 });
             }
 
+            // Reader warnings (e.g. OpenAPI 3.1 compatibility mode) reach the caller.
+            foreach (var warning in configuration.Warnings)
+            {
+                result.Report.Warnings.Add(new SyncWarning
+                {
+                    Message = warning,
+                    Kind = SyncWarningKind.SkippedFieldDueToPolicy
+                });
+            }
+
             var graph = _graphBuilder.BuildFromSyncReport(result.Report, configuration.ApiGroupName);
             return result with { ExecutionGraph = graph };
         }

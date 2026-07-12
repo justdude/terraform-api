@@ -43,14 +43,14 @@ public sealed class OpenApiFacadeService : IOpenApiParser, IOpenApiOperationsFet
     {
         var read = _documentReader.Read(openApiJson);
 
-        // Tolerant by design: diagnostics with a USABLE document (3.1 compat
-        // mode, vendor extensions, JSON-Schema-only keywords) do not block
-        // conversion. Diagnostics are fatal only when the document yielded no
-        // paths either — the 1.6 reader is YAML-lenient and coerces garbage
-        // input into an empty document instead of throwing. Strict checking
-        // lives in the validate endpoint/tool, which surfaces all diagnostics.
-        var unusable = read.Document is null
-            || (read.Errors.Count > 0 && (read.Document.Paths is null || read.Document.Paths.Count == 0));
+        // Diagnostics are tolerated ONLY when the document was down-leveled from
+        // OpenAPI 3.1: post-downgrade, legitimate 3.1-only keywords
+        // (type arrays, $defs, …) surface as non-fatal diagnostics. For genuine
+        // 3.0 documents any reader error is a real spec violation (e.g. a
+        // missing required 'name' on a parameter) and stays fatal — otherwise
+        // the converter would emit invalid Terraform. Strict all-diagnostic
+        // reporting lives in the validate endpoint/tool.
+        var unusable = read.Document is null || (read.Errors.Count > 0 && !read.DowngradedFrom31);
         if (unusable)
         {
             var reason = read.Errors.Count > 0 ? string.Join("; ", read.Errors) : "Unknown error";
@@ -61,7 +61,13 @@ public sealed class OpenApiFacadeService : IOpenApiParser, IOpenApiOperationsFet
         // orchestrator already normalized upstream).
         (settings, _) = ApimPlaceholders.Normalize(settings);
 
-        return ApimConfigurationBuilder.Build(read.Document, settings, _namingValidator);
+        // read.Document is non-null here (the "unusable" guard covers null).
+        var configuration = ApimConfigurationBuilder.Build(read.Document!, settings, _namingValidator);
+
+        // Surface reader warnings (3.1 compat mode) to the caller.
+        return read.Warnings.Count > 0
+            ? configuration with { Warnings = [.. configuration.Warnings, .. read.Warnings] }
+            : configuration;
     }
 
     /// <summary>
@@ -82,6 +88,6 @@ public sealed class OpenApiFacadeService : IOpenApiParser, IOpenApiOperationsFet
             return new OperationsListResult { Success = false, Error = message };
         }
 
-        return OperationsListBuilder.Build(read.Document, sourceUrl);
+        return OperationsListBuilder.Build(read.Document, sourceUrl, read.Warnings);
     }
 }

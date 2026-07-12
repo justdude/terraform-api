@@ -272,6 +272,7 @@ public sealed class ConversionController : ControllerBase
                 {
                     IsValid = errors.Count == 0,
                     Errors = errors,
+                    Warnings = read.Warnings,
                     Summary = new ApiSummary
                     {
                         ApiName = doc.Info?.Title ?? "Unknown",
@@ -285,7 +286,8 @@ public sealed class ConversionController : ControllerBase
             return Ok(new ValidateResponse
             {
                 IsValid = errors.Count == 0,
-                Errors = errors
+                Errors = errors,
+                Warnings = read.Warnings
             });
         }
         catch (Exception ex)
@@ -376,7 +378,8 @@ public sealed class ConversionController : ControllerBase
                 }).ToList(),
                 RequestBodyContentTypes = op.RequestBodyContentTypes,
                 ResponseCodes = op.ResponseCodes
-            }).ToList()
+            }).ToList(),
+            Warnings = result.Warnings
         });
     }
 }
