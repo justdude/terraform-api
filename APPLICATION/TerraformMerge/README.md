@@ -80,6 +80,20 @@ TerraformMerge help
 
 Run with **no arguments** to open the graphical window.
 
+## Sample files to try
+
+The `samples/` folder holds ready-to-load files:
+
+| File | Use |
+|---|---|
+| `orders-dev.tf` | A nested APIM config (dev) — load as **Original** |
+| `orders-staging.tf` | The staging config with an extra `cancel-order` op — load as **Target** in *Merge* mode |
+| `orders-openapi.json` | The Orders OpenAPI spec — load as **Target** in *API* mode |
+
+Try: load `orders-dev.tf` into Original and `orders-openapi.json` into Target
+(API mode), **Compute Diff** → the PUT and DELETE `/orders/{orderId}` operations
+appear as `[+]` additions; select them, **◄ Add to Original**, **Save Original**.
+
 ## Tests
 
 ```powershell
