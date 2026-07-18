@@ -1,0 +1,48 @@
+# =====================================================================
+# Вариант Б: OpenAPI по URL
+# Чтобы включить этот вариант:
+#   1) переименуйте файл в apis-url.tf
+#   2) удалите/переименуйте apis-disk.tf (иначе конфликт имён ресурса)
+# Environment вытаскивается из поддомена URL через regex.
+# =====================================================================
+
+locals {
+  apis_url = {
+    for k, v in var.apis_url : k => merge(v, {
+      # https://<env>.example.com/...  ->  env
+      environment = regex("https?://([^.]+)\\.", v.url)[0]
+    })
+  }
+}
+
+# Скачиваем спеку сами, чтобы Terraform отслеживал изменение содержимого
+# и переимпортировал API при обновлении спеки.
+data "http" "spec" {
+  for_each = local.apis_url
+  url      = each.value.url
+}
+
+resource "azurerm_api_management_api" "api" {
+  for_each = local.apis_url
+
+  name                = each.key
+  resource_group_name = var.resource_group_name
+  api_management_name = var.apim_by_env[each.value.environment]
+  revision            = "1"
+  display_name        = title(each.key)
+  path                = each.value.path
+  protocols           = ["https"]
+
+  import {
+    content_format = "openapi+json"
+    content_value  = data.http.spec[each.key].response_body
+  }
+}
+
+# --- Альтернатива: отдать APIM сам URL (проще, но без авто-отслеживания
+#     изменений содержимого). Тогда уберите блок data "http" выше и используйте:
+#
+#   import {
+#     content_format = "openapi-link"
+#     content_value  = each.value.url
+#   }

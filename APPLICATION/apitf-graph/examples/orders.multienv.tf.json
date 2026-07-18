@@ -1,0 +1,101 @@
+{
+  "variable": {
+    "environments": {
+      "type": "map(object({\n    api_name        = string\n    apim_name       = string\n    resource_group  = string\n    subscription_id = string\n    revision        = string\n  }))",
+      "default": {
+        "dev": {
+          "api_name": "orders-dev",
+          "apim_name": "apim-dev",
+          "resource_group": "rg-dev",
+          "subscription_id": "00000000-0000-0000-0000-000000000000",
+          "revision": "1"
+        },
+        "stage": {
+          "api_name": "orders-stage",
+          "apim_name": "apim-stage",
+          "resource_group": "rg-stage",
+          "subscription_id": "00000000-0000-0000-0000-000000000000",
+          "revision": "1"
+        },
+        "prod": {
+          "api_name": "orders-prod",
+          "apim_name": "apim-prod",
+          "resource_group": "rg-prod",
+          "subscription_id": "00000000-0000-0000-0000-000000000000",
+          "revision": "1"
+        }
+      }
+    }
+  },
+  "provider": {
+    "azurerm": [
+      {
+        "alias": "dev",
+        "subscription_id": "${var.environments[\"dev\"].subscription_id}",
+        "features": {}
+      },
+      {
+        "alias": "stage",
+        "subscription_id": "${var.environments[\"stage\"].subscription_id}",
+        "features": {}
+      },
+      {
+        "alias": "prod",
+        "subscription_id": "${var.environments[\"prod\"].subscription_id}",
+        "features": {}
+      }
+    ]
+  },
+  "resource": {
+    "azurerm_api_management_api": {
+      "orders_dev": {
+        "provider": "azurerm.dev",
+        "name": "${var.environments[\"dev\"].api_name}",
+        "resource_group_name": "${var.environments[\"dev\"].resource_group}",
+        "api_management_name": "${var.environments[\"dev\"].apim_name}",
+        "revision": "${var.environments[\"dev\"].revision}",
+        "display_name": "Orders API",
+        "path": "orders",
+        "protocols": [
+          "https"
+        ],
+        "import": {
+          "content_format": "openapi+json",
+          "content_value": "${file(\"specs/orders.json\")}"
+        }
+      },
+      "orders_stage": {
+        "provider": "azurerm.stage",
+        "name": "${var.environments[\"stage\"].api_name}",
+        "resource_group_name": "${var.environments[\"stage\"].resource_group}",
+        "api_management_name": "${var.environments[\"stage\"].apim_name}",
+        "revision": "${var.environments[\"stage\"].revision}",
+        "display_name": "Orders API",
+        "path": "orders",
+        "protocols": [
+          "https"
+        ],
+        "import": {
+          "content_format": "openapi+json",
+          "content_value": "${file(\"specs/orders.json\")}"
+        }
+      },
+      "orders_prod": {
+        "provider": "azurerm.prod",
+        "name": "${var.environments[\"prod\"].api_name}",
+        "resource_group_name": "${var.environments[\"prod\"].resource_group}",
+        "api_management_name": "${var.environments[\"prod\"].apim_name}",
+        "revision": "${var.environments[\"prod\"].revision}",
+        "display_name": "Orders API",
+        "path": "orders",
+        "protocols": [
+          "https"
+        ],
+        "import": {
+          "content_format": "openapi+json",
+          "content_value": "${file(\"specs/orders.json\")}"
+        }
+      }
+    }
+  }
+}

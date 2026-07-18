@@ -1,0 +1,21 @@
+{
+  "resource": {
+    "azurerm_api_management_api": {
+      "orders": {
+        "name": "orders",
+        "resource_group_name": "${var.resource_group_name}",
+        "api_management_name": "${var.apim_name}",
+        "revision": "1",
+        "display_name": "Orders API",
+        "path": "orders",
+        "protocols": [
+          "https"
+        ],
+        "import": {
+          "content_format": "openapi+json",
+          "content_value": "${file(\"ex.json\")}"
+        }
+      }
+    }
+  }
+}
