@@ -407,3 +407,5 @@ FodyWeavers.xsd
 
 # Deploy artifacts
 /deploy/*.tar.gz
+
+APPLICATION/publish/

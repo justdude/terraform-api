@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>TerraformMerge</AssemblyName>
+    <RootNamespace>TerraformMerge</RootNamespace>
+    <IsPackable>false</IsPackable>
+
+    <!-- Single-file, self-contained publish produces one TerraformMerge.exe with
+         no loose DLLs. Publish flags are supplied on the command line (see
+         README) so the default build stays framework-dependent. Debug symbols
+         are embedded and reference doc/symbol siblings are not copied, so the
+         publish folder holds only the executable. -->
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <DebugType>embedded</DebugType>
+    <AllowedReferenceRelatedFileExtensions>none</AllowedReferenceRelatedFileExtensions>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\TerraformApi.Application\TerraformApi.Application.csproj" />
+    <ProjectReference Include="..\..\src\TerraformApi.Domain\TerraformApi.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="TerraformMerge.Tests" />
+  </ItemGroup>
+
+</Project>
