@@ -24,7 +24,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\TerraformMerge\TerraformMerge.csproj" />
+    <ProjectReference Include="..\..\src\TerraformMerge\TerraformMerge.csproj" />
   </ItemGroup>
 
 </Project>

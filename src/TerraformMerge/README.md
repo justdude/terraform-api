@@ -8,15 +8,15 @@ line.
 ## Building a single-file executable (one `.exe`, no DLLs)
 
 ```powershell
-dotnet publish APPLICATION/TerraformMerge/TerraformMerge.csproj `
+dotnet publish src/TerraformMerge/TerraformMerge.csproj `
   -c Release -r win-x64 --self-contained true `
   -p:PublishSingleFile=true `
   -p:IncludeNativeLibrariesForSelfExtract=true `
   -p:EnableCompressionInSingleFile=true `
-  -o APPLICATION/publish
+  -o publish
 ```
 
-The output `APPLICATION/publish/TerraformMerge.exe` is fully self-contained — the
+The output `publish/TerraformMerge.exe` is fully self-contained — the
 .NET runtime and every referenced library are bundled inside the one file. No
 loose DLLs, no framework install required on the target machine.
 
@@ -97,7 +97,7 @@ appear as `[+]` additions; select them, **◄ Add to Original**, **Save Original
 ## Tests
 
 ```powershell
-dotnet test APPLICATION/TerraformMerge.Tests/TerraformMerge.Tests.csproj
+dotnet test tests/TerraformMerge.Tests/TerraformMerge.Tests.csproj
 ```
 
 Covers the distance primitives, URL normalization, the similarity scorer, the
