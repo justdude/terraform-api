@@ -61,6 +61,33 @@ public class SimilarityScorerTests
     }
 
     [Fact]
+    public void Similarity_SubRouteOfAnotherOperation_StaysBelowThreshold()
+    {
+        // A deeper route is a different url_template, so a different operation.
+        // Text similarity alone puts these at 0.72 — the segment-count gate is
+        // what separates them, since a legitimate rename (v1/users vs v2/users)
+        // scores no higher.
+        var a = TestOps.Op("GET", "stock/{sku}");
+        var b = TestOps.Op("GET", "stock/{sku}/history");
+
+        var score = SimilarityScorer.Similarity(a, b);
+        Assert.True(score < BlockAligner.DefaultThreshold,
+            $"a sub-route is a distinct operation; scored {score:0.000}");
+    }
+
+    [Fact]
+    public void Similarity_VersionedRouteRename_StillMatches()
+    {
+        // The counterpart to the segment-count gate: same depth, one segment
+        // renamed, so these must remain matchable.
+        var a = TestOps.Op("GET", "v1/users");
+        var b = TestOps.Op("GET", "v2/users");
+
+        Assert.True(SimilarityScorer.Similarity(a, b) >= BlockAligner.DefaultThreshold,
+            "a version-prefix rename at equal depth should still align");
+    }
+
+    [Fact]
     public void Similarity_UnrelatedRoutes_Low()
     {
         var a = TestOps.Op("GET", "users");

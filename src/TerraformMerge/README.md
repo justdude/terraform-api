@@ -61,12 +61,26 @@ steals a partner a better global assignment needs. Similarity blends:
   so environment-suffixed ids align across `dev`/`prod`.
 
 **Identity gates.** An APIM operation is identified by `(method, url_template)`,
-so both are *necessary* conditions — a different method, or a route similarity
-below `0.34`, caps the score under the match threshold no matter how much else
-agrees. This matters for merges: without the gates `GET /users` scored `0.60`
-against `GET /orders`, and `GET /users` scored `0.61` against `POST /users`, so a
-genuinely new operation was treated as "already present" and silently dropped
-instead of being offered as an addition.
+so both are *necessary* conditions — no amount of agreement elsewhere lets a
+pair through if it fails one of:
+
+| Gate | Rejects |
+|---|---|
+| route similarity ≥ `0.34` | `GET /users` vs `GET /orders` (scored `0.60`) |
+| same method | `GET /users` vs `POST /users` (scored `0.61`) |
+| same segment count | `GET stock/{sku}` vs `GET stock/{sku}/history` (scored `0.72`) |
+
+Each gate exists because of a real defect: without it the aligner reported a
+genuinely new operation as "already present", so the merge silently dropped it
+instead of offering it as an addition. Segment count is a separate gate rather
+than a higher similarity floor because a sub-route (`0.58`) and a legitimate
+rename such as `v1/users` → `v2/users` (`0.60`) are otherwise indistinguishable.
+
+**Multiple api groups.** `backend_apis` is a map, so a file may hold several api
+groups and each owns its own `api_operations` array. The Original pane lists
+every group's operations together, and saving rewrites each group separately:
+operations return to the group they were read from, and newly added ones go to
+the group most of the retained operations came from.
 
 Terraform blocks are parsed on the shared AST HCL parser (from
 `TerraformApi.Application`), so each block is structured exactly — a `<method>`
@@ -97,10 +111,25 @@ The `samples/` folder holds ready-to-load files:
 | `orders-dev.tf` | A nested APIM config (dev) — load as **Original** |
 | `orders-staging.tf` | The staging config with an extra `cancel-order` op — load as **Target** in *Merge* mode |
 | `orders-openapi.json` | The Orders OpenAPI spec — load as **Target** in *API* mode |
+| `azure-apim-platform.tf` | A harder, more realistic Azure APIM config — load as **Original** |
 
 Try: load `orders-dev.tf` into Original and `orders-openapi.json` into Target
 (API mode), **Compute Diff** → the PUT and DELETE `/orders/{orderId}` operations
 appear as `[+]` additions; select them, **◄ Add to Original**, **Save Original**.
+
+`azure-apim-platform.tf` is the one to reach for when testing the tool itself
+rather than the happy path. It is a *module input* file (`key = value`
+assignments), **not** resource-style HCL — `resource "azurerm_api_management_api"
+"x" { … }` blocks are not parsed. It carries two api groups, `${var.…}`
+interpolations throughout, an indented (`<<-`) policy heredoc whose `<method>`
+tags must not be read as operations, interleaved comments, and near-miss
+operations (`v1/payments` vs `v2/payments`, `GET` vs `PUT` on the same route).
+Every one of those broke something real the first time it was loaded — see the
+identity gates above and the multi-group note.
+
+Its round trip is asserted byte-for-byte in the test suite, so it doubles as the
+regression fixture: the file you load is the file under test, linked into the
+test project rather than copied.
 
 ## Tests
 
@@ -109,7 +138,11 @@ dotnet test tests/TerraformMerge.Tests/TerraformMerge.Tests.csproj
 ```
 
 Covers the distance primitives, URL normalization, the similarity scorer, the
-Hungarian aligner (including a greedy-trap case), the loaders, the HCL block
-builder, the byte-faithful rewriter, and a data-driven suite of adversarial
-alignment scenarios (`Fixtures/alignment-scenarios.json`) generated and
-independently verified by a 50-agent hardening pass.
+Hungarian aligner (including a greedy-trap case and a brute-force optimality
+check), the loaders, the HCL block builder, the byte-faithful rewriter, and
+end-to-end merges over the shipped samples.
+
+`AlignmentScenarioTests` is data-driven over
+`Fixtures/alignment-scenarios.json`. That fixture has **not** been generated
+yet — the test currently runs its no-fixture sentinel path and asserts nothing
+about alignment. Drop a scenario file in to activate it.

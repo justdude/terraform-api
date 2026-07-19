@@ -1,3 +1,4 @@
+using TerraformApi.Domain.Models.Apim;
 using TerraformApi.Domain.Models.Hcl;
 
 namespace TerraformMerge.Engine;
@@ -23,26 +24,44 @@ public sealed record OperationTemplateContext(
         {
             foreach (var group in doc.ApiGroups)
             {
-                var op = group.Operations.FirstOrDefault();
-                if (op is not null)
-                {
-                    return new OperationTemplateContext(
-                        op.ApimResourceGroupName?.StructuralText ?? Placeholders.ResourceGroup,
-                        op.AstNode.Get("apim_name") is HclLiteral n ? n.RawValue : Placeholders.ApimName,
-                        op.ApiName?.StructuralText ?? Placeholders.ApiName);
-                }
-
-                var api = group.Apis.FirstOrDefault();
-                if (api is not null)
-                {
-                    return new OperationTemplateContext(
-                        api.ApimResourceGroupName.StructuralText ?? Placeholders.ResourceGroup,
-                        api.ApimName.StructuralText ?? Placeholders.ApimName,
-                        api.Name.StructuralText ?? Placeholders.ApiName);
-                }
+                var context = FromGroup(group);
+                if (context != Placeholders)
+                    return context;
             }
         }
 
         return Placeholders;
     }
+
+    /// <summary>
+    /// Derives a context from one api group, preferring its first operation and
+    /// falling back to its api block. Values are read as structural text, so an
+    /// interpolated field such as <c>apim_name = "${var.apim_name}"</c> is
+    /// carried through verbatim instead of degrading to a placeholder tag.
+    /// </summary>
+    public static OperationTemplateContext FromGroup(ParsedApiGroup group)
+    {
+        var op = group.Operations.FirstOrDefault();
+        if (op is not null)
+        {
+            return new OperationTemplateContext(
+                op.ApimResourceGroupName?.StructuralText ?? Placeholders.ResourceGroup,
+                Text(op.AstNode, "apim_name") ?? Placeholders.ApimName,
+                op.ApiName?.StructuralText ?? Placeholders.ApiName);
+        }
+
+        var api = group.Apis.FirstOrDefault();
+        if (api is not null)
+        {
+            return new OperationTemplateContext(
+                api.ApimResourceGroupName.StructuralText ?? Placeholders.ResourceGroup,
+                api.ApimName.StructuralText ?? Placeholders.ApimName,
+                api.Name.StructuralText ?? Placeholders.ApiName);
+        }
+
+        return Placeholders;
+    }
+
+    private static string? Text(HclObject node, string key) =>
+        new HclValueRef { Node = node.Get(key) }.StructuralText;
 }

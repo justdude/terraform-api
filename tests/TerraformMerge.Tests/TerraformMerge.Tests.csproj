@@ -21,6 +21,14 @@
 
   <ItemGroup>
     <None Include="Fixtures\**" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The shipped samples are linked in rather than copied, so the files a
+         user loads in the app are exactly the ones under test. -->
+    <None Include="..\..\src\TerraformMerge\samples\*.tf"
+          Link="Fixtures\samples\%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\TerraformMerge\samples\*.json"
+          Link="Fixtures\samples\%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

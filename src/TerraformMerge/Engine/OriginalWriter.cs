@@ -6,8 +6,8 @@ using TerraformApi.Domain.Models.Hcl;
 namespace TerraformMerge.Engine;
 
 /// <summary>
-/// Rewrites the Original Terraform file so its <c>api_operations</c> array
-/// matches a desired ordered list of operations. Operations that came from the
+/// Rewrites the Original Terraform file so its <c>api_operations</c> arrays
+/// match a desired ordered list of operations. Operations that came from the
 /// Original document are reused verbatim (byte-for-byte via the format-preserving
 /// writer); operations from other sources are generated as canonical blocks.
 /// </summary>
@@ -24,19 +24,63 @@ public sealed class OriginalWriter
         var doc = original.TerraformDocument
             ?? throw new InvalidOperationException("Original must be a Terraform document to rewrite.");
 
-        var ctx = context ?? OperationTemplateContext.FromOriginal(original);
-
-        var group = SelectTargetGroup(doc, desired)
+        var fallback = SelectTargetGroup(doc, desired)
             ?? throw new InvalidOperationException("No api group found in the original document.");
 
+        // A document may hold several api groups (backend_apis is a map). Each
+        // group owns its own api_operations array, so the desired list is
+        // partitioned per group and every group is rewritten independently —
+        // writing them all into one group would duplicate the other groups'
+        // operations and leave the originals behind.
+        var groups = doc.ApiGroups
+            .Where(g => g.AstNode.Get("api_operations") is HclArray)
+            .ToList();
+        if (!groups.Any(g => ReferenceEquals(g, fallback)))
+            groups.Add(fallback);
+
+        var buckets = groups.Select(_ => new List<OperationNode>()).ToList();
+
+        foreach (var node in desired)
+        {
+            // Operations read from this document return to their own group;
+            // anything else (a new operation, or one from another file) lands in
+            // the fallback group.
+            var index = node.Source == OperationSource.OriginalTerraform && node.ApiGroupName is not null
+                ? groups.FindIndex(g => g.ApiGroupName == node.ApiGroupName)
+                : -1;
+            if (index < 0)
+                index = groups.FindIndex(g => ReferenceEquals(g, fallback));
+
+            buckets[index].Add(node);
+        }
+
+        for (var i = 0; i < groups.Count; i++)
+            WriteGroup(groups[i], buckets[i], context);
+
+        return _writer.Write(doc.Ast);
+    }
+
+    /// <summary>
+    /// Replaces one group's <c>api_operations</c> array with the given nodes.
+    /// The template context is derived from the group being written so a
+    /// generated block blends into <i>that</i> group's style, not another's.
+    /// </summary>
+    private static void WriteGroup(
+        ParsedApiGroup group, List<OperationNode> nodes, OperationTemplateContext? context)
+    {
         if (group.AstNode.Get("api_operations") is not HclArray array)
         {
+            if (nodes.Count == 0)
+                return;
+
             array = new HclArray();
             group.AstNode.Items.Add(new HclAssignment { Key = "api_operations", Value = array });
         }
 
+        var ctx = context ?? OperationTemplateContext.FromGroup(group);
+
         var newItems = new List<HclArrayItem>();
-        foreach (var node in desired)
+        foreach (var node in nodes)
         {
             if (node.Source == OperationSource.OriginalTerraform && node.ArrayItem is not null)
                 newItems.Add(node.ArrayItem);                       // reuse — preserves formatting
@@ -47,14 +91,13 @@ public sealed class OriginalWriter
         // Only dirty the array when the operation set actually changed (by
         // reference and order); an unchanged rewrite then round-trips the file
         // byte-for-byte via the writer's whole-document fast path.
-        var changed = !array.Items.SequenceEqual(newItems);
+        var changed = array.Items.Count != newItems.Count
+            || !array.Items.Zip(newItems, ReferenceEquals).All(same => same);
 
         array.Items.Clear();
         array.Items.AddRange(newItems);
         if (changed)
             array.Dirty = true; // force re-render so reorders/removals/additions take effect
-
-        return _writer.Write(doc.Ast);
     }
 
     private static ParsedApiGroup? SelectTargetGroup(ParsedApimDocument doc, IReadOnlyList<OperationNode> desired)

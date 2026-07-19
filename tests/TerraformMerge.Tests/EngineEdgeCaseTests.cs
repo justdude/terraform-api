@@ -51,6 +51,7 @@ public class EngineEdgeCaseTests
     {
         var loaded = _loader.LoadTerraform(TwoGroups, OperationSource.OriginalTerraform);
         var a1 = loaded.Nodes.Single(n => n.OperationId == "a1-dev");
+        var b1 = loaded.Nodes.Single(n => n.OperationId == "b1-dev");
 
         var newOp = new OperationNode
         {
@@ -60,10 +61,11 @@ public class EngineEdgeCaseTests
             UrlTemplate = "a"
         };
 
-        // Retain a1 (group-a) and add a generated op → only group-a changes.
-        var text = _writer.Rewrite(loaded, [a1, newOp]);
+        // The desired list is the whole file's intended content (the UI pane
+        // holds every group), so b1 is retained. Only group-a gains an op.
+        var text = _writer.Rewrite(loaded, [a1, newOp, b1]);
 
-        // group-b is emitted byte-for-byte (it is the trailing block).
+        // group-b is untouched, so it is emitted byte-for-byte.
         var groupBTail = TwoGroups[TwoGroups.IndexOf("group-b = {", StringComparison.Ordinal)..].TrimEnd();
         Assert.EndsWith(groupBTail, text.TrimEnd());
 
@@ -76,15 +78,37 @@ public class EngineEdgeCaseTests
     public void Rewrite_TargetsGroupOfRetainedOriginals_NotAlwaysFirst()
     {
         var loaded = _loader.LoadTerraform(TwoGroups, OperationSource.OriginalTerraform);
+        var a1 = loaded.Nodes.Single(n => n.OperationId == "a1-dev");
         var b1 = loaded.Nodes.Single(n => n.OperationId == "b1-dev");
 
+        // Only b1 is retained from an existing group, so the generated op
+        // follows it into group-b rather than defaulting to the first group.
         var newOp = new OperationNode { Source = OperationSource.TargetTerraform, OperationId = "b2", Method = "POST", UrlTemplate = "b" };
 
-        var text = _writer.Rewrite(loaded, [b1, newOp]);
+        var text = _writer.Rewrite(loaded, [b1, newOp, a1]);
 
         var reparsed = _loader.LoadTerraform(text, OperationSource.OriginalTerraform);
         Assert.Equal(2, reparsed.Nodes.Count(n => n.ApiGroupName == "group-b"));
         Assert.Equal(1, reparsed.Nodes.Count(n => n.ApiGroupName == "group-a"));
+    }
+
+    [Fact]
+    public void Rewrite_OperationDroppedFromANonTargetGroup_IsActuallyRemoved()
+    {
+        // The Original pane lists every group's operations, so an operation the
+        // user removed must disappear from whichever group owns it. Rewriting
+        // only the target group used to leave it in the file — the removal was
+        // silently ignored and the other group's operations were additionally
+        // duplicated into the target group.
+        var loaded = _loader.LoadTerraform(TwoGroups, OperationSource.OriginalTerraform);
+        var a1 = loaded.Nodes.Single(n => n.OperationId == "a1-dev");
+
+        var text = _writer.Rewrite(loaded, [a1]);
+
+        var reparsed = _loader.LoadTerraform(text, OperationSource.OriginalTerraform);
+        Assert.Single(reparsed.Nodes);
+        Assert.Equal("a1-dev", reparsed.Nodes[0].OperationId);
+        Assert.DoesNotContain("b1-dev", text);
     }
 
     [Fact]

@@ -39,6 +39,19 @@ public static partial class SimilarityScorer
     /// </summary>
     internal const double IdentityMismatchCeiling = 0.50;
 
+    /// <summary>
+    /// Number of path segments in the canonical route. Routes of different
+    /// depth are different operations: <c>stock/{sku}</c> and
+    /// <c>stock/{sku}/history</c> are separate APIM url_templates, yet they
+    /// score 0.72 on text similarity alone — high enough that a merge would
+    /// treat the sub-route as "already present" and drop it. Segment count is a
+    /// sharper discriminator than any similarity threshold could be here, since
+    /// the sub-route case (0.58) and a legitimate rename such as v1/users vs
+    /// v2/users (0.60) are otherwise indistinguishable.
+    /// </summary>
+    private static int SegmentCount(OperationNode node) =>
+        UrlNormalizer.Segments(node.CanonicalUrl).Count;
+
     [GeneratedRegex(@"\$\{[^}]*\}")]
     private static partial Regex Interpolation();
 
@@ -81,6 +94,8 @@ public static partial class SimilarityScorer
         if (url < MinimumUrlSimilarity)
             return Math.Min(score, url);
         if (!methodMatches)
+            return Math.Min(score, IdentityMismatchCeiling);
+        if (SegmentCount(a) != SegmentCount(b))
             return Math.Min(score, IdentityMismatchCeiling);
 
         return score;
