@@ -34,6 +34,33 @@ public class SimilarityScorerTests
     }
 
     [Fact]
+    public void Similarity_SameMethodUnrelatedShortRoutes_StayBelowThreshold()
+    {
+        // No ids and no params → only method + URL carry evidence. A shared
+        // method must never be enough on its own to pair two different routes.
+        var a = TestOps.Op("GET", "users");
+        var b = TestOps.Op("GET", "orders");
+
+        var score = SimilarityScorer.Similarity(a, b);
+        Assert.True(score < BlockAligner.DefaultThreshold,
+            $"GET /users and GET /orders are different operations; scored {score:0.000}");
+    }
+
+    [Fact]
+    public void Similarity_SameRouteAndIdButDifferentMethod_StaysBelowThreshold()
+    {
+        // An APIM operation is identified by (method, url_template). A GET and a
+        // POST on the same path are different operations — pairing them would
+        // hide a genuinely new operation during a merge.
+        var a = TestOps.Op("POST", "users", "manage-users");
+        var b = TestOps.Op("GET", "users", "manage-users");
+
+        var score = SimilarityScorer.Similarity(a, b);
+        Assert.True(score < BlockAligner.DefaultThreshold,
+            $"POST and GET /users are different operations; scored {score:0.000}");
+    }
+
+    [Fact]
     public void Similarity_UnrelatedRoutes_Low()
     {
         var a = TestOps.Op("GET", "users");

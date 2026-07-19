@@ -60,6 +60,14 @@ steals a partner a better global assignment needs. Similarity blends:
 - operationId comparison strips `${...}` interpolations and `{tag}` placeholders,
   so environment-suffixed ids align across `dev`/`prod`.
 
+**Identity gates.** An APIM operation is identified by `(method, url_template)`,
+so both are *necessary* conditions — a different method, or a route similarity
+below `0.34`, caps the score under the match threshold no matter how much else
+agrees. This matters for merges: without the gates `GET /users` scored `0.60`
+against `GET /orders`, and `GET /users` scored `0.61` against `POST /users`, so a
+genuinely new operation was treated as "already present" and silently dropped
+instead of being offered as an addition.
+
 Terraform blocks are parsed on the shared AST HCL parser (from
 `TerraformApi.Application`), so each block is structured exactly — a `<method>`
 tag inside a policy heredoc is never mistaken for an operation field.

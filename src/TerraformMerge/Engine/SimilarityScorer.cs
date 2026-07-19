@@ -17,6 +17,28 @@ public static partial class SimilarityScorer
     private const double OperationIdWeight = 0.15;
     private const double ParameterWeight = 0.10;
 
+    /// <summary>
+    /// Minimum route similarity for a pair to be eligible at all. Without it,
+    /// two operations with no ids and no parameters (where only method + URL
+    /// carry evidence, and a shared method alone is worth 0.35/0.75 = 0.47 after
+    /// renormalization) drift over the match threshold — GET /users vs
+    /// GET /orders scored 0.60. The floor separates unrelated routes (~0.17)
+    /// from genuinely related ones such as v1/users vs v2/users (~0.60).
+    /// </summary>
+    internal const double MinimumUrlSimilarity = 0.34;
+
+    /// <summary>
+    /// Ceiling applied when the pair fails an identity gate. An APIM operation
+    /// is identified by <c>(method, url_template)</c>: a different method or a
+    /// too-different route means a <b>different operation</b>, and pairing them
+    /// during a merge would hide a genuinely new operation instead of offering
+    /// it as an addition. Capping (rather than zeroing) keeps scores ordered for
+    /// diagnostics; it sits below <see cref="BlockAligner.DefaultThreshold"/>, so
+    /// a caller that deliberately lowers the threshold under this ceiling can
+    /// still explore fuzzy cross-identity pairings.
+    /// </summary>
+    internal const double IdentityMismatchCeiling = 0.50;
+
     [GeneratedRegex(@"\$\{[^}]*\}")]
     private static partial Regex Interpolation();
 
@@ -41,8 +63,11 @@ public static partial class SimilarityScorer
             totalWeight += weight;
         }
 
-        Add(MethodWeight, string.Equals(a.Method, b.Method, StringComparison.OrdinalIgnoreCase) ? 1.0 : 0.0);
-        Add(UrlWeight, UrlSimilarity(a, b));
+        var url = UrlSimilarity(a, b);
+        var methodMatches = string.Equals(a.Method, b.Method, StringComparison.OrdinalIgnoreCase);
+
+        Add(MethodWeight, methodMatches ? 1.0 : 0.0);
+        Add(UrlWeight, url);
 
         if (!(string.IsNullOrWhiteSpace(a.OperationId) && string.IsNullOrWhiteSpace(b.OperationId)))
             Add(OperationIdWeight, OperationIdSimilarity(a.OperationId, b.OperationId));
@@ -50,7 +75,15 @@ public static partial class SimilarityScorer
         if (a.ParameterKeys.Count > 0 || b.ParameterKeys.Count > 0)
             Add(ParameterWeight, TextDistance.Jaccard(a.ParameterKeys, b.ParameterKeys));
 
-        return totalWeight == 0.0 ? 0.0 : weightedSum / totalWeight;
+        var score = totalWeight == 0.0 ? 0.0 : weightedSum / totalWeight;
+
+        // Identity gates — (method, url_template) identifies an APIM operation.
+        if (url < MinimumUrlSimilarity)
+            return Math.Min(score, url);
+        if (!methodMatches)
+            return Math.Min(score, IdentityMismatchCeiling);
+
+        return score;
     }
 
     /// <summary>Distance = 1 - similarity.</summary>

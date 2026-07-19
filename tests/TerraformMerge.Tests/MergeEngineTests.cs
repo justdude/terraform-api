@@ -53,6 +53,35 @@ public class MergeEngineTests
     }
 
     [Fact]
+    public void AppendMissing_UnrelatedRouteSameMethod_IsOfferedAsAnAddition()
+    {
+        // Regression: the route identity gate. Without it GET /users scored 0.60
+        // against GET /orders and was treated as "already present", silently
+        // losing a genuinely new operation.
+        var original = new[] { TestOps.Op("GET", "orders", source: OperationSource.OriginalTerraform) };
+        var target = new[] { TestOps.Op("GET", "users") };
+
+        var merged = _merge.AppendMissing(original, target);
+
+        Assert.Equal(2, merged.Count);
+        Assert.Contains(merged, n => n.UrlTemplate == "users");
+    }
+
+    [Fact]
+    public void AppendMissing_SameRouteDifferentMethod_IsOfferedAsAnAddition()
+    {
+        // Regression: the method identity gate. GET /users scored 0.611 against
+        // POST /users (same id) and was suppressed instead of added.
+        var original = new[] { TestOps.Op("POST", "users", "manage-users", OperationSource.OriginalTerraform) };
+        var target = new[] { TestOps.Op("GET", "users", "manage-users") };
+
+        var merged = _merge.AppendMissing(original, target);
+
+        Assert.Equal(2, merged.Count);
+        Assert.Contains(merged, n => n.Method == "GET");
+    }
+
+    [Fact]
     public void AppendMissing_EmptyTarget_ReturnsOriginalUnchanged()
     {
         var original = new[] { TestOps.Op("GET", "users", source: OperationSource.OriginalTerraform) };
