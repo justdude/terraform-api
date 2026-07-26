@@ -42,7 +42,70 @@ public sealed partial class HclParserService : IHclParser
             }
         }
 
-        return new HclDocument { RootItems = rootItems, OriginalSource = source };
+        var document = new HclDocument { RootItems = rootItems, OriginalSource = source };
+        AnnotateBlankLines(rootItems, contentStart: 0, source);
+        return document;
+    }
+
+    /// <summary>
+    /// Records, on each item, how many blank lines preceded it in the source, so
+    /// the writer's canonical (slow) path can reproduce section spacing. Blank
+    /// lines are not tokens, so without this a re-rendered document would collapse
+    /// them. Recurses through object and array values.
+    /// </summary>
+    private static void AnnotateBlankLines(IReadOnlyList<HclObjectItem> items, int contentStart, string source)
+    {
+        for (var i = 0; i < items.Count; i++)
+        {
+            var item = items[i];
+            var prevEnd = i == 0 ? contentStart : items[i - 1].EndOffset;
+            item.BlankLinesBefore = CountBlankLines(source, prevEnd, item.StartOffset);
+
+            if (item is HclAssignment assignment)
+                AnnotateValue(assignment.Value, source);
+        }
+    }
+
+    private static void AnnotateBlankLines(IReadOnlyList<HclArrayItem> items, int contentStart, string source)
+    {
+        for (var i = 0; i < items.Count; i++)
+        {
+            var item = items[i];
+            var prevEnd = i == 0 ? contentStart : items[i - 1].EndOffset;
+            item.BlankLinesBefore = CountBlankLines(source, prevEnd, item.StartOffset);
+            AnnotateValue(item.Value, source);
+        }
+    }
+
+    private static void AnnotateValue(HclValue value, string source)
+    {
+        switch (value)
+        {
+            case HclObject obj:
+                AnnotateBlankLines(obj.Items, obj.StartOffset + 1, source);
+                break;
+            case HclArray array:
+                AnnotateBlankLines(array.Items, array.StartOffset + 1, source);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Blank lines in <c>source[fromExclusive..toExclusive)</c>: the newline that
+    /// ends the previous item's line does not count, so it is (newlines - 1),
+    /// floored at zero. Returns 0 for missing spans.
+    /// </summary>
+    private static int CountBlankLines(string source, int fromExclusive, int toExclusive)
+    {
+        if (fromExclusive < 0 || toExclusive < 0 || fromExclusive >= toExclusive || toExclusive > source.Length)
+            return 0;
+
+        var newlines = 0;
+        for (var i = fromExclusive; i < toExclusive; i++)
+            if (source[i] == '\n')
+                newlines++;
+
+        return Math.Max(0, newlines - 1);
     }
 
     /// <inheritdoc />

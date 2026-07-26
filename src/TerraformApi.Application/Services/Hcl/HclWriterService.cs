@@ -27,7 +27,10 @@ public sealed class HclWriterService : IHclWriter
         var sb = new StringBuilder();
         var keyWidth = ComputeKeyWidth(document.RootItems, options);
         foreach (var item in document.RootItems)
+        {
+            EmitBlankLines(sb, item.BlankLinesBefore, options);
             WriteObjectItem(sb, item, 0, keyWidth, source, options);
+        }
         return sb.ToString();
     }
 
@@ -155,8 +158,14 @@ public sealed class HclWriterService : IHclWriter
         var innerIndent = indent + options.IndentSize;
         var keyWidth = ComputeKeyWidth(obj.Items, options);
 
+        var first = true;
         foreach (var item in obj.Items)
+        {
+            if (!first)
+                EmitBlankLines(sb, item.BlankLinesBefore, options);
+            first = false;
             WriteObjectItem(sb, item, innerIndent, keyWidth, source, options);
+        }
 
         sb.Append(new string(' ', indent)).Append('}');
     }
@@ -190,8 +199,13 @@ public sealed class HclWriterService : IHclWriter
         var innerIndent = indent + options.IndentSize;
         var pad = new string(' ', innerIndent);
 
+        var firstItem = true;
         foreach (var item in array.Items)
         {
+            if (!firstItem)
+                EmitBlankLines(sb, item.BlankLinesBefore, options);
+            firstItem = false;
+
             // Fast path: unchanged element (incl. its leading comments) → original slice.
             if (source is not null && !IsDirtyArrayItem(item) && item.HasSourceSpan)
             {
@@ -211,6 +225,13 @@ public sealed class HclWriterService : IHclWriter
             sb.Append(pad).Append(FormatComment(comment)).Append(options.LineEnding);
 
         sb.Append(new string(' ', indent)).Append(']');
+    }
+
+    /// <summary>Emits <paramref name="count"/> blank lines (source section spacing).</summary>
+    private static void EmitBlankLines(StringBuilder sb, int count, HclWriteOptions options)
+    {
+        for (var i = 0; i < count; i++)
+            sb.Append(options.LineEnding);
     }
 
     private static int ComputeKeyWidth(IEnumerable<HclObjectItem> items, HclWriteOptions options)

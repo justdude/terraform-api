@@ -57,7 +57,15 @@ public sealed class OriginalWriter
         for (var i = 0; i < groups.Count; i++)
             WriteGroup(groups[i], buckets[i], context);
 
-        return _writer.Write(doc.Ast);
+        // Match the source's line endings. The unedited fast path returns the
+        // original text verbatim regardless, but once an edit re-renders a line
+        // the default "\n" would mix with the sliced siblings' "\r\n" on a
+        // CRLF-authored file, flipping the EOL of every re-rendered line.
+        var lineEnding = doc.Ast.OriginalSource?.Contains("\r\n", StringComparison.Ordinal) == true
+            ? "\r\n"
+            : "\n";
+
+        return _writer.Write(doc.Ast, new HclWriteOptions { LineEnding = lineEnding });
     }
 
     /// <summary>

@@ -66,6 +66,9 @@ public sealed class OperationSourceLoader
                     DisplayName = op.DisplayName?.StructuralText ?? "",
                     Description = op.Description?.StructuralText ?? "",
                     StatusCode = ParseStatus(op.StatusCode?.StructuralText),
+                    ApiName = op.ApiName?.StructuralText ?? "",
+                    ApimResourceGroupName = op.ApimResourceGroupName?.StructuralText ?? "",
+                    ApimName = FieldText(op.AstNode, "apim_name"),
                     ParameterKeys = ExtractParameterKeys(op.RequestArray),
                     ResponseCodes = ExtractResponseCodes(op.ResponsesArray),
                     ArrayItem = op.ArrayItem,
@@ -112,6 +115,9 @@ public sealed class OperationSourceLoader
 
     private static int? ParseStatus(string? text) =>
         int.TryParse(text, out var code) ? code : null;
+
+    private static string FieldText(HclObject node, string key) =>
+        new HclValueRef { Node = node.Get(key) }.StructuralText ?? "";
 
     private static IReadOnlyList<string> ExtractParameterKeys(HclArray? requestArray)
     {

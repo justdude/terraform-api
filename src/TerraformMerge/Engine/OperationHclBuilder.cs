@@ -16,12 +16,21 @@ public static class OperationHclBuilder
 
     public static HclObject Build(OperationNode node, OperationTemplateContext ctx)
     {
+        // Context fields default to the target file's style so a plain "add to
+        // Original" blends in. A field the user explicitly edited wins — that is
+        // how an accepted-from-the-other-side value reaches the generated block.
+        // The check is per-field: editing the description must never repoint the
+        // operation's api/resource-group/apim to the source side's values.
+        var resourceGroup = Prefer(node.EditedFields.Contains(OperationField.ApimResourceGroupName), node.ApimResourceGroupName, ctx.ResourceGroup);
+        var apimName = Prefer(node.EditedFields.Contains(OperationField.ApimName), node.ApimName, ctx.ApimName);
+        var apiName = Prefer(node.EditedFields.Contains(OperationField.ApiName), node.ApiName, ctx.ApiName);
+
         var items = new List<HclObjectItem>
         {
             Assign("operation_id", Str(string.IsNullOrEmpty(node.OperationId) ? "{operation-id}" : node.OperationId)),
-            Assign("apim_resource_group_name", Str(ctx.ResourceGroup)),
-            Assign("apim_name", Str(ctx.ApimName)),
-            Assign("api_name", Str(ctx.ApiName)),
+            Assign("apim_resource_group_name", Str(resourceGroup)),
+            Assign("apim_name", Str(apimName)),
+            Assign("api_name", Str(apiName)),
             Assign("display_name", Str(node.DisplayName)),
             Assign("method", Str(node.Method.ToUpperInvariant())),
             Assign("url_template", Str(node.UrlTemplate)),
@@ -111,6 +120,10 @@ public static class OperationHclBuilder
 
         return ArrayOf(objects);
     }
+
+    /// <summary>The node's own value when edited and present; otherwise the context fallback.</summary>
+    private static string Prefer(bool edited, string nodeValue, string fallback) =>
+        edited && !string.IsNullOrEmpty(nodeValue) ? nodeValue : fallback;
 
     // -- small AST helpers --
     private static HclAssignment Assign(string key, HclValue value) => new() { Key = key, Value = value };

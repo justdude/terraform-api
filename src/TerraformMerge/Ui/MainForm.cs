@@ -16,6 +16,8 @@ public sealed class MainForm : Form
     private readonly MergeEngine _merge = new();
     private readonly OriginalWriter _writer = new();
 
+    private readonly System.ComponentModel.IContainer _components = new System.ComponentModel.Container();
+
     private readonly BindingList<OperationNode> _original = [];
     private readonly BindingList<DiffEntry> _diff = [];
     private readonly BindingList<OperationNode> _target = [];
@@ -26,6 +28,9 @@ public sealed class MainForm : Form
     private ListBox _lstOriginal = null!;
     private ListBox _lstDiff = null!;
     private ListBox _lstTarget = null!;
+    private GroupBox _grpOriginal = null!;
+    private GroupBox _grpDiff = null!;
+    private GroupBox _grpTarget = null!;
     private TextBox _pathOriginal = null!;
     private TextBox _pathDiff = null!;
     private TextBox _pathTarget = null!;
@@ -73,9 +78,12 @@ public sealed class MainForm : Form
         panes.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 34));
         root.Controls.Add(panes, 0, 1);
 
-        panes.Controls.Add(BuildPane("Original", out _lstOriginal, out _pathOriginal, LoadOriginal, moveButtons: false), 0, 0);
-        panes.Controls.Add(BuildPane("Diff", out _lstDiff, out _pathDiff, LoadDiff, moveButtons: true), 1, 0);
-        panes.Controls.Add(BuildPane("Target", out _lstTarget, out _pathTarget, LoadTarget, moveButtons: true), 2, 0);
+        _grpOriginal = BuildPane("Original", out _lstOriginal, out _pathOriginal, LoadOriginal, moveButtons: false);
+        _grpDiff = BuildPane("Diff", out _lstDiff, out _pathDiff, LoadDiff, moveButtons: true);
+        _grpTarget = BuildPane("Target", out _lstTarget, out _pathTarget, LoadTarget, moveButtons: true);
+        panes.Controls.Add(_grpOriginal, 0, 0);
+        panes.Controls.Add(_grpDiff, 1, 0);
+        panes.Controls.Add(_grpTarget, 2, 0);
 
         _lstOriginal.DataSource = _original;
         _lstOriginal.DisplayMember = nameof(OperationNode.Display);
@@ -97,10 +105,18 @@ public sealed class MainForm : Form
         _modeMerge.CheckedChanged += (_, _) => OnModeChanged();
         panel.Controls.Add(_modeMerge);
         panel.Controls.Add(_modeApi);
+
+        panel.Controls.Add(new Label
+        {
+            Text = "   •   Double-click a row to edit its fields (choose values from either side)",
+            AutoSize = true,
+            ForeColor = Color.DimGray,
+            Padding = new Padding(0, 8, 0, 0)
+        });
         return panel;
     }
 
-    private Control BuildPane(string title, out ListBox list, out TextBox path, EventHandler onLoad, bool moveButtons)
+    private GroupBox BuildPane(string title, out ListBox list, out TextBox path, EventHandler onLoad, bool moveButtons)
     {
         var group = new GroupBox { Text = title, Dock = DockStyle.Fill };
 
@@ -117,7 +133,36 @@ public sealed class MainForm : Form
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));  // path controls
         group.Controls.Add(layout);
 
-        list = new ListBox { Dock = DockStyle.Fill, SelectionMode = SelectionMode.MultiExtended, IntegralHeight = false };
+        list = new ListBox
+        {
+            Dock = DockStyle.Fill,
+            SelectionMode = SelectionMode.MultiExtended,
+            IntegralHeight = false,
+            // Monospaced so the padded Method / URL / (id) columns line up.
+            Font = new Font("Consolas", 9.5f)
+        };
+        var localList = list;
+        localList.MouseDoubleClick += (_, e) => EditFromDoubleClick(localList, e);
+
+        // A right-click does not move the ListBox selection on its own, so
+        // select the row under the cursor before the context menu opens —
+        // otherwise Edit… would act on the previously-selected (wrong) row.
+        localList.MouseDown += (_, e) =>
+        {
+            if (e.Button != MouseButtons.Right)
+                return;
+            var row = localList.IndexFromPoint(e.Location);
+            if (row != ListBox.NoMatches)
+                localList.SelectedIndex = row;
+        };
+
+        var menu = new ContextMenuStrip();
+        _components.Add(menu); // deterministic disposal with the form
+        var editItem = new ToolStripMenuItem("Edit…");
+        editItem.Click += (_, _) => EditOperationAt(localList, localList.SelectedIndex);
+        menu.Items.Add(editItem);
+        localList.ContextMenuStrip = menu;
+
         layout.Controls.Add(list, 0, 0);
 
         if (moveButtons)
@@ -176,12 +221,60 @@ public sealed class MainForm : Form
         return panel;
     }
 
+    // ---------------- editing ----------------
+
+    private void EditFromDoubleClick(ListBox list, MouseEventArgs e)
+    {
+        var index = list.IndexFromPoint(e.Location);
+        if (index == ListBox.NoMatches)
+            index = list.SelectedIndex;
+        EditOperationAt(list, index);
+    }
+
+    /// <summary>
+    /// Opens the field editor for one operation. Combo choices are the values
+    /// each field takes across both loaded sides, so any value can be accepted
+    /// from either side. operation_id is fixed.
+    /// </summary>
+    private void EditOperationAt(ListBox list, int index)
+    {
+        RunGuarded(() =>
+        {
+            if (index < 0)
+                return;
+
+            var subject =
+                ReferenceEquals(list, _lstDiff) ? _diff[index].Operation :
+                ReferenceEquals(list, _lstOriginal) ? _original[index] :
+                _target[index];
+
+            var catalog = MergeFieldCatalog.Build(_original, _target);
+            using var dialog = new OperationEditorDialog(subject, catalog);
+            if (dialog.ShowDialog(this) != DialogResult.OK)
+                return;
+
+            if (OperationEditor.Apply(subject, dialog.Edits))
+            {
+                // The same node instance may appear in more than one pane
+                // (Diff entries wrap Target nodes), so refresh all three.
+                _original.ResetBindings();
+                _diff.ResetBindings();
+                _target.ResetBindings();
+                UpdateStatus($"Edited {subject.Method} {subject.UrlTemplate}. Save Original to persist changes.");
+            }
+            else
+            {
+                UpdateStatus("No changes made.");
+            }
+        });
+    }
+
     // ---------------- actions ----------------
 
     private void OnModeChanged()
     {
         var api = _modeApi.Checked;
-        _lstTarget.Parent!.Text = api ? "Target (OpenAPI)" : "Target";
+        _grpTarget.Text = api ? "Target (OpenAPI)" : "Target";
         UpdateStatus(api
             ? "API mode: Original is Terraform, Target is an OpenAPI document."
             : "Merge mode: both Original and Target are Terraform configs.");
@@ -350,4 +443,11 @@ public sealed class MainForm : Form
     }
 
     private void UpdateStatus(string message) => _status.Text = message;
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+            _components.Dispose(); // disposes the per-pane context menus + items
+        base.Dispose(disposing);
+    }
 }

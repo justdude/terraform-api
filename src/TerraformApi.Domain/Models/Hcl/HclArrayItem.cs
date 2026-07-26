@@ -10,4 +10,11 @@ public sealed record HclArrayItem : HclNode
 
     /// <summary>The element value.</summary>
     public required HclValue Value { get; init; }
+
+    /// <summary>
+    /// Number of blank lines that preceded this element in the source. Recorded
+    /// by the parser and re-emitted by the writer's canonical (slow) path so a
+    /// re-rendered array keeps its spacing. Zero for elements created programmatically.
+    /// </summary>
+    public int BlankLinesBefore { get; set; }
 }

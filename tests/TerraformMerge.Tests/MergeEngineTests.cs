@@ -90,6 +90,29 @@ public class MergeEngineTests
     }
 
     [Fact]
+    public void ComputeDiff_WrapsTheSameTargetNodeInstance_SoEditsPropagate()
+    {
+        // The editor relies on DiffEntry.Operation being the SAME reference the
+        // Target pane holds, so an edit made through the Diff pane is visible on
+        // the Target node and persists on save. If a future change cloned the
+        // node into the DiffEntry, a Diff-pane edit would be silently lost.
+        var original = new[] { TestOps.Op("GET", "orders", "list-dev", OperationSource.OriginalTerraform) };
+        var target = new[] { TestOps.Op("DELETE", "orders/{id}", "deleteOrder") };
+
+        var diff = _merge.ComputeDiff(original, target);
+        var entry = Assert.Single(diff, d => d.Kind == DiffKind.Added);
+        Assert.Same(target[0], entry.Operation);
+
+        OperationEditor.Apply(entry.Operation, new Dictionary<OperationField, string>
+        {
+            [OperationField.UrlTemplate] = "orders/{orderId}"
+        });
+
+        Assert.Equal("orders/{orderId}", target[0].UrlTemplate);
+        Assert.Contains("orders/{orderId}", target[0].Display);
+    }
+
+    [Fact]
     public void AreEquivalent_ComparesMethodUrlAndParameters()
     {
         var a = TestOps.Op("GET", "/users/", "x", parameterKeys: "query:limit");

@@ -44,6 +44,23 @@ path box + **…** (browse) + **Load** at the bottom:
   canonical blocks in the file's style.
 - **Convert OpenAPI…** runs an OpenAPI → Terraform conversion to a new file.
 
+### Editing an operation (accept values from either side)
+
+**Double-click any row** (in any pane) — or right-click → **Edit…** — to open the
+field editor. Every field is an *editable* combo box whose drop-down lists the
+distinct values that field takes across **both** loaded sides. So to move an
+operation from staging to dev, double-click it and pick `rg-apim-dev` (offered
+because it exists on the other side) for the resource group — or type a new value.
+
+- `operation_id` is shown but **fixed** — it is the operation's identity and is
+  never merged across sides.
+- Editing an **Original** operation rewrites only the changed line in the file:
+  its request/response blocks, policy heredoc, and comments are preserved
+  byte-for-byte. `Save Original` persists the change.
+- Editing an operation you then **◄ Add to Original** carries your chosen
+  api/resource-group/apim values into the generated block instead of the file's
+  defaults.
+
 ## The parser and matcher (graphs + similarity distance)
 
 Each `api_operation` (or OpenAPI operation) becomes a **node** in a graph. The
