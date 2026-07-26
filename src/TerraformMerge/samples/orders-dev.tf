@@ -49,7 +49,6 @@ apis = {
 XML
           },
         ]
-
         api_operations = [
           {
             operation_id             = "list-orders-dev"
@@ -140,6 +139,17 @@ XML
                 description  = "Created"
               },
             ]
+          },
+          {
+            operation_id             = "cancel-order-staging"
+            apim_resource_group_name = "rg-apim-dev"
+            apim_name                = "apim-company-dev"
+            api_name                 = "orders-api-dev"
+            display_name             = "Cancel order"
+            method                   = "POST"
+            url_template             = "orders/{orderId}/cancel"
+            status_code              = "202"
+            description              = "Cancels an order"
           },
         ]
       }
