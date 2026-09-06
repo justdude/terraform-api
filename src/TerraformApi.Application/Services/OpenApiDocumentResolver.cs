@@ -1,11 +1,11 @@
-using System.Text.Json;
-
 namespace TerraformApi.Application.Services;
 
 /// <summary>
-/// Resolves an OpenAPI specification from either direct JSON input or a URL.
+/// Resolves an OpenAPI specification from either direct JSON/YAML input or a URL.
 /// Shared by the API controllers and the MCP tools so both hosts validate
-/// input identically (absolute HTTP(S) URL, non-empty response, valid JSON).
+/// input identically (absolute HTTP(S) URL, non-empty response within the size
+/// cap). Document validity itself is enforced downstream by the reader, which
+/// accepts both JSON and YAML.
 /// </summary>
 public static class OpenApiDocumentResolver
 {
@@ -64,10 +64,10 @@ public static class OpenApiDocumentResolver
                 if (string.IsNullOrWhiteSpace(content))
                     throw new InvalidOperationException($"Empty response received from {openApiUrl}");
 
-                // Validate it's actually JSON before handing it to the parser.
-                using var document = JsonDocument.Parse(content);
-                _ = document.RootElement;
-
+                // No JSON gate: the reader accepts YAML as well as JSON (and the
+                // inline openApiJson path is un-gated), so gating URL content on
+                // JSON.Parse wrongly rejected valid YAML specs. Malformed content
+                // is reported downstream by the reader via its Errors list.
                 return content;
             }
             catch (HttpRequestException ex)
@@ -79,11 +79,6 @@ public static class OpenApiDocumentResolver
             {
                 throw new InvalidOperationException(
                     $"Request to '{openApiUrl}' timed out.", ex);
-            }
-            catch (JsonException ex)
-            {
-                throw new InvalidOperationException(
-                    $"Response from {openApiUrl} is not valid JSON: {ex.Message}", ex);
             }
         }
 

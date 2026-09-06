@@ -25,6 +25,9 @@ public sealed class MainForm : Form
     private LoadedOperations _originalLoaded = LoadedOperations.Empty;
     private LoadedOperations _targetLoaded = LoadedOperations.Empty;
 
+    /// <summary>Path the Original was loaded from; Save is rebuilt from that document.</summary>
+    private string? _originalLoadedPath;
+
     private ListBox _lstOriginal = null!;
     private ListBox _lstDiff = null!;
     private ListBox _lstTarget = null!;
@@ -286,6 +289,7 @@ public sealed class MainForm : Form
         {
             var text = ReadPath(_pathOriginal);
             _originalLoaded = _loader.LoadTerraform(text, OperationSource.OriginalTerraform);
+            _originalLoadedPath = _pathOriginal.Text;
             Replace(_original, _originalLoaded.Nodes);
             UpdateStatus($"Loaded {_original.Count} operation(s) from Original.");
         });
@@ -371,6 +375,23 @@ public sealed class MainForm : Form
                 throw new InvalidOperationException("Load an Original Terraform file first.");
             if (string.IsNullOrWhiteSpace(_pathOriginal.Text))
                 throw new InvalidOperationException("Original path is empty.");
+
+            // The output is rebuilt from the LOADED document (its AST and source
+            // byte-slices), not from whatever the path box points at now. If the
+            // path changed after loading, writing there would overwrite an
+            // unrelated file with content spliced from a different document.
+            if (!string.Equals(_pathOriginal.Text, _originalLoadedPath, StringComparison.OrdinalIgnoreCase))
+            {
+                var proceed = MessageBox.Show(this,
+                    $"The path changed since loading.\n\nThe saved content is rebuilt from the loaded file " +
+                    $"({_originalLoadedPath}), not from the current path. Overwrite\n\n{_pathOriginal.Text}\n\nwith it?",
+                    "Save Original", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+                if (proceed != DialogResult.Yes)
+                {
+                    UpdateStatus("Save cancelled. Load the file you want to edit, or restore its path.");
+                    return;
+                }
+            }
 
             var text = _writer.Rewrite(_originalLoaded, _original.ToList());
             File.WriteAllText(_pathOriginal.Text, text);

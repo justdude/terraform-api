@@ -81,7 +81,8 @@ public static class OperationEditor
             {
                 Key = old.Key,
                 KeyIsQuoted = old.KeyIsQuoted,
-                Value = MakeValue(value)
+                Value = MakeValue(value, old.Value),
+                BlankLinesBefore = old.BlankLinesBefore
             };
             return;
         }
@@ -103,20 +104,36 @@ public static class OperationEditor
     }
 
     /// <summary>
-    /// A value containing <c>${...}</c> becomes an interpolation node so it is
-    /// written as a quoted interpolation and compares structurally; everything
-    /// else is a plain string literal whose special characters are escaped, so a
-    /// value with a quote or backslash produces valid HCL.
+    /// Turns a raw (decoded) value into an AST value node:
+    /// <list type="bullet">
+    /// <item>containing <c>${...}</c> → an interpolation (its quotes/backslashes
+    /// escaped, but the <c>${}</c> markers left intact);</item>
+    /// <item>a number/bool whose <paramref name="previous"/> value was the same
+    /// kind → the same literal kind, so an unquoted <c>status_code = 200</c> is
+    /// not flipped to a quoted string by a value-only edit;</item>
+    /// <item>otherwise a string literal with its special characters escaped, so a
+    /// value with a quote or backslash produces valid HCL.</item>
+    /// </list>
     /// </summary>
-    private static HclValue MakeValue(string value) =>
-        value.Contains("${", StringComparison.Ordinal)
-            ? new HclInterpolation { InnerText = value, Bare = false }
-            : new HclLiteral { RawValue = EscapeForHcl(value), Kind = HclLiteralKind.String };
+    private static HclValue MakeValue(string value, HclValue? previous = null)
+    {
+        if (value.Contains("${", StringComparison.Ordinal))
+            return new HclInterpolation { InnerText = EscapeForHcl(value), Bare = false };
+
+        if (previous is HclLiteral { Kind: HclLiteralKind.Number } && long.TryParse(value, out _))
+            return new HclLiteral { RawValue = value, Kind = HclLiteralKind.Number };
+
+        if (previous is HclLiteral { Kind: HclLiteralKind.Bool } && value is "true" or "false")
+            return new HclLiteral { RawValue = value, Kind = HclLiteralKind.Bool };
+
+        return new HclLiteral { RawValue = EscapeForHcl(value), Kind = HclLiteralKind.String };
+    }
 
     /// <summary>
     /// Escapes a raw value into the between-quotes text an <see cref="HclLiteral"/>
-    /// expects. Backslash first (so it does not double-escape the quote escapes),
-    /// then the double quote.
+    /// or interpolation expects. Backslash first (so it does not double-escape the
+    /// quote escapes), then the double quote. The <c>${}</c> markers are left
+    /// untouched.
     /// </summary>
     private static string EscapeForHcl(string value) =>
         value.Replace("\\", "\\\\").Replace("\"", "\\\"");

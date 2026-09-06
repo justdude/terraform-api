@@ -1,3 +1,4 @@
+using TerraformApi.Application.Services.Hcl;
 using TerraformApi.Domain.Interfaces;
 using TerraformApi.Domain.Models.Apim;
 using TerraformApi.Domain.Models.Hcl;
@@ -209,7 +210,8 @@ public sealed class SyncOrchestratorService : ISyncOrchestrator
         return new ApplyProfileResult
         {
             Success = true,
-            TerraformConfig = _writer.Write(parsed),
+            // Preserve the source's line endings across the re-render (minimal-diff).
+            TerraformConfig = _writer.Write(parsed, HclLineEndings.OptionsFor(parsed.Ast.OriginalSource)),
             AppliedChanges = changes,
             Warnings = warnings
         };

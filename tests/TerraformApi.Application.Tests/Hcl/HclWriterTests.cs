@@ -184,6 +184,94 @@ public class HclWriterTests
     }
 
     [Fact]
+    public void Write_PreserveMode_BlankLinesBetweenSections_SurviveDirtyRerender()
+    {
+        // A blank line between sibling assignments is not a token, so a
+        // re-rendered (dirty) object used to collapse it. The parser now records
+        // BlankLinesBefore and the writer re-emits it — so appending an
+        // operation keeps the blank line before api_operations intact.
+        var src = "group = {\n  api = [\n    {\n      name = \"a\"\n    },\n  ]\n\n  api_operations = [\n    {\n      operation_id = \"op-1\"\n    },\n  ]\n}";
+        var doc = _parser.Parse(src);
+
+        var group = Assert.IsType<HclObject>(doc.RootAssignments.Single().Value);
+        var operations = Assert.IsType<HclArray>(group.Get("api_operations"));
+        operations.Items.Add(new HclArrayItem
+        {
+            Value = new HclObject
+            {
+                Items = [new HclAssignment { Key = "operation_id", Value = new HclLiteral { RawValue = "op-2", Kind = HclLiteralKind.String } }]
+            }
+        });
+
+        var output = _writer.Write(doc).Replace("\r", "");
+
+        // The blank line between the api array and api_operations is preserved.
+        Assert.Contains("  ]\n\n  api_operations = [", output);
+        Assert.Contains("\"op-2\"", output);
+    }
+
+    [Fact]
+    public void Write_PreserveMode_AppendedItem_AddsNoSpuriousBlankLine()
+    {
+        // The generated item has BlankLinesBefore = 0, so it must not gain a
+        // blank line before it (only source spacing is reproduced).
+        var src = "group = {\n  api_operations = [\n    {\n      operation_id = \"op-1\"\n    },\n  ]\n}";
+        var doc = _parser.Parse(src);
+        var operations = Assert.IsType<HclArray>(
+            Assert.IsType<HclObject>(doc.RootAssignments.Single().Value).Get("api_operations"));
+        operations.Items.Add(new HclArrayItem
+        {
+            Value = new HclObject
+            {
+                Items = [new HclAssignment { Key = "operation_id", Value = new HclLiteral { RawValue = "op-2", Kind = HclLiteralKind.String } }]
+            }
+        });
+
+        var output = _writer.Write(doc).Replace("\r", "");
+
+        // No blank line between the two operations.
+        Assert.DoesNotContain("},\n\n    {", output);
+        Assert.Equal(2, Assert.IsType<HclArray>(
+            Assert.IsType<HclObject>(_parser.Parse(output).RootAssignments.Single().Value).Get("api_operations")).Items.Count);
+    }
+
+    [Fact]
+    public void Write_BlankLineAfterOpeningBrace_SurvivesDirtyRerender()
+    {
+        // Regression: WriteObject/WriteArray used to skip the first item's
+        // BlankLinesBefore, dropping a blank line authored right after '{'/'['.
+        var src = "group = {\n\n  api_operations = [\n\n    {\n      operation_id = \"op-1\"\n    },\n  ]\n}";
+        var doc = _parser.Parse(src);
+        var operations = Assert.IsType<HclArray>(
+            Assert.IsType<HclObject>(doc.RootAssignments.Single().Value).Get("api_operations"));
+        operations.Items.Add(new HclArrayItem
+        {
+            Value = new HclObject { Items = [new HclAssignment { Key = "operation_id", Value = new HclLiteral { RawValue = "op-2", Kind = HclLiteralKind.String } }] }
+        });
+
+        var output = _writer.Write(doc).Replace("\r", "");
+
+        Assert.Contains("group = {\n\n  api_operations = [", output); // blank after '{' kept
+        Assert.Contains("api_operations = [\n\n    {", output);       // blank after '[' kept
+    }
+
+    [Fact]
+    public void Write_LeadingFileBlankLines_SurviveDirtyRerender()
+    {
+        // Regression: CountBlankLines subtracted 1 even at file start (no
+        // preceding line), dropping one leading blank line on re-render.
+        var src = "\n\ngroup = {\n  x = 1\n}";
+        var doc = _parser.Parse(src);
+        // Dirty the document so the slow path runs.
+        Assert.IsType<HclObject>(doc.RootAssignments.Single().Value).Items.Add(
+            new HclAssignment { Key = "y", Value = new HclLiteral { RawValue = "2", Kind = HclLiteralKind.Number } });
+
+        var output = _writer.Write(doc).Replace("\r", "");
+
+        Assert.StartsWith("\n\ngroup = {", output); // both leading blank lines kept
+    }
+
+    [Fact]
     public void Write_CleanMultiLineChildUnderDirtyParent_ReindentedConsistently()
     {
         // Source uses 4-space indentation; the canonical writer uses 2.

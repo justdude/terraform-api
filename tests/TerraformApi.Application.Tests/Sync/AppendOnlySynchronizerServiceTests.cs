@@ -192,6 +192,58 @@ public class AppendOnlySynchronizerServiceTests
             reparsed.ApiGroups.Single().Operations.Single().Description?.StructuralText);
     }
 
+    [Fact]
+    public void Synchronize_CrlfSource_AppendKeepsUniformCrlf()
+    {
+        // Regression: the writer was called with the default LF line ending, so
+        // appending an op into a CRLF-authored file produced mixed LF/CRLF.
+        var tf = TfGroup("g", TfOperation("op-a", "GET", "/a")).Replace("\r\n", "\n").Replace("\n", "\r\n");
+        var config = Config("g", Op("op-a", "GET", "/a"), Op("op-b", "POST", "/b"));
+
+        var result = Sync(tf, config);
+
+        Assert.True(result.Success);
+        Assert.Equal(1, result.Report.OperationsAdded);
+        // No bare LF anywhere: every "\n" is preceded by "\r".
+        Assert.DoesNotContain('\n', result.TerraformConfig.Replace("\r\n", ""));
+    }
+
+    [Fact]
+    public void Synchronize_EnrichField_PreservesBlankLineBeforeIt()
+    {
+        // Regression: replacing an assignment in place dropped its recorded
+        // BlankLinesBefore, so enriching an empty description also deleted the
+        // blank line that preceded it.
+        var op = """
+                {
+                  operation_id             = "op-a"
+                  apim_resource_group_name = "rg-apim-dev"
+                  apim_name                = "apim-company-dev"
+                  api_name                 = "my-api-dev"
+                  display_name             = "op-a"
+                  method                   = "GET"
+                  url_template             = "/a"
+                  status_code              = "200"
+
+                  description              = ""
+                },
+        """;
+        var tf = TfGroup("g", op);
+        var config = Config("g", Op("op-a", "GET", "/a", description: "Returns all items"));
+
+        var result = Sync(tf, config);
+
+        Assert.Equal(1, result.Report.OperationsEnriched);
+
+        // The blank line before description is still there (only its value changed):
+        // the line above description is blank, and the one above that is status_code.
+        var lines = result.TerraformConfig.Replace("\r\n", "\n").Split('\n');
+        var descIndex = Array.FindIndex(lines, l => l.TrimStart().StartsWith("description", StringComparison.Ordinal));
+        Assert.True(descIndex >= 2, "description line found");
+        Assert.Equal("", lines[descIndex - 1].Trim());
+        Assert.StartsWith("status_code", lines[descIndex - 2].TrimStart());
+    }
+
     // S5
     [Fact]
     public void Synchronize_ExistingDescription_NotOverwritten()

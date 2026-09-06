@@ -229,6 +229,41 @@ public class OperationEditorTests
     }
 
     [Fact]
+    public void Apply_ToOriginalNode_InterpolationWithQuote_ProducesParseableHcl()
+    {
+        // Regression: the interpolation branch of MakeValue skipped escaping, so
+        // a value with BOTH ${...} and a quote produced non-parseable HCL.
+        var original = _loader.LoadTerraform(Sample.Apim, OperationSource.OriginalTerraform);
+        var list = original.Nodes.Single(n => n.OperationId == "list-orders-dev");
+
+        OperationEditor.Apply(list, Edit((OperationField.Description, @"the ""${var.env}"" env")));
+        var text = _writer.Rewrite(original, original.Nodes.ToList());
+
+        // Reparses cleanly (all three operations survive) and the interior quotes
+        // are escaped around the preserved ${...} marker.
+        var reparsed = _loader.LoadTerraform(text, OperationSource.OriginalTerraform);
+        Assert.Equal(3, reparsed.Nodes.Count);
+        Assert.Contains(@"\""${var.env}\""", text);
+    }
+
+    [Fact]
+    public void Apply_ToOriginalNode_NumericStatusCode_StaysUnquotedNumber()
+    {
+        // Regression: MakeValue always emitted a quoted string, flipping an
+        // unquoted number literal to a string on a value-only edit.
+        var src = "g = {\n  api_operations = [\n    {\n      operation_id = \"op\"\n      apim_resource_group_name = \"rg\"\n      api_name = \"api\"\n      method = \"GET\"\n      url_template = \"x\"\n      status_code = 200\n    },\n  ]\n}";
+        var original = _loader.LoadTerraform(src, OperationSource.OriginalTerraform);
+        var op = original.Nodes.Single();
+
+        OperationEditor.Apply(op, Edit((OperationField.StatusCode, "404")));
+        var text = _writer.Rewrite(original, original.Nodes.ToList());
+
+        Assert.Contains("404", text);
+        Assert.DoesNotContain("\"404\"", text); // emitted as an unquoted number, not a string
+        Assert.Equal(404, _loader.LoadTerraform(text, OperationSource.OriginalTerraform).Nodes.Single().StatusCode);
+    }
+
+    [Fact]
     public void Apply_ToOriginalNode_InsertsAbsentFieldBeforeNestedBlocks()
     {
         // Editing a field the operation did not have inserts it above the

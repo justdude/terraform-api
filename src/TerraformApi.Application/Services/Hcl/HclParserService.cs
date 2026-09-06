@@ -105,7 +105,10 @@ public sealed partial class HclParserService : IHclParser
             if (source[i] == '\n')
                 newlines++;
 
-        return Math.Max(0, newlines - 1);
+        // The newline that terminates the previous item's line is not a blank
+        // line, so discount it — except at the document start (fromExclusive 0),
+        // where there is no preceding line and every newline is a leading blank.
+        return Math.Max(0, newlines - (fromExclusive == 0 ? 0 : 1));
     }
 
     /// <inheritdoc />

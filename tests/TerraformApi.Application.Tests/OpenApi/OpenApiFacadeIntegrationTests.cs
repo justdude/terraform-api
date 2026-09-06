@@ -171,6 +171,30 @@ public class OpenApiFacadeIntegrationTests
     }
 
     [Fact]
+    public void Parse_EmptySummary_FallsBackToOperationId_NotEmptyDisplayName()
+    {
+        // Regression: an empty (but legal) summary produced display_name = "",
+        // which APIM rejects. It must fall back to the operationId.
+        const string spec = """
+        {
+          "openapi": "3.0.3",
+          "info": { "title": "T", "version": "1" },
+          "paths": {
+            "/things": {
+              "get": { "summary": "", "operationId": "listThings", "responses": { "200": { "description": "ok" } } }
+            }
+          }
+        }
+        """;
+        var facade = new OpenApiFacadeService(new ApimNamingValidatorService());
+        var config = facade.Parse(spec, FullSettings());
+
+        var op = Assert.Single(config.ApiOperations);
+        Assert.False(string.IsNullOrWhiteSpace(op.DisplayName));
+        Assert.Equal("listThings", op.DisplayName);
+    }
+
+    [Fact]
     public void Acc3_Parse_InlineComplexPutBody_AndPathLevelParameters()
     {
         var facade = new OpenApiFacadeService(new ApimNamingValidatorService());

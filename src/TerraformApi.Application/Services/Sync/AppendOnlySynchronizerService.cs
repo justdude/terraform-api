@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using TerraformApi.Application.Services.Apim;
+using TerraformApi.Application.Services.Hcl;
 using TerraformApi.Domain.Interfaces;
 using TerraformApi.Domain.Models;
 using TerraformApi.Domain.Models.Apim;
@@ -274,7 +275,10 @@ public sealed class AppendOnlySynchronizerService : IAppendOnlySynchronizer
         if (options.AddReplaceBeforeApplyHeader && added > 0 && newPlaceholders.Count > 0)
             EnsureReplaceBeforeApplyHeader(targetGroup, newPlaceholders);
 
-        var finalHcl = _hclWriter.Write(existingParsed.Ast);
+        // Preserve the source's line endings so an edit to a CRLF-authored file
+        // does not churn every writer-emitted newline to LF (minimal-diff).
+        var finalHcl = _hclWriter.Write(
+            existingParsed.Ast, HclLineEndings.OptionsFor(existingParsed.Ast.OriginalSource));
 
         var report = new SyncReport
         {
@@ -594,9 +598,17 @@ public sealed class AppendOnlySynchronizerService : IAppendOnlySynchronizer
 
         var existingIndex = node.Items.FindIndex(i => i is HclAssignment a && a.Key == field);
         if (existingIndex >= 0)
+        {
+            // Carry the replaced field's section spacing across the in-place
+            // replacement; the fresh node otherwise defaults to 0 and the writer
+            // would drop a blank line that preceded the field (minimal-diff).
+            newAssignment.BlankLinesBefore = node.Items[existingIndex].BlankLinesBefore;
             node.Items[existingIndex] = newAssignment;
+        }
         else
+        {
             node.Items.Add(newAssignment);
+        }
     }
 
     // -----------------------------------------------------------------

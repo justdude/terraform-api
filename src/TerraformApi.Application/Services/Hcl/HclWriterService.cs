@@ -158,12 +158,12 @@ public sealed class HclWriterService : IHclWriter
         var innerIndent = indent + options.IndentSize;
         var keyWidth = ComputeKeyWidth(obj.Items, options);
 
-        var first = true;
         foreach (var item in obj.Items)
         {
-            if (!first)
-                EmitBlankLines(sb, item.BlankLinesBefore, options);
-            first = false;
+            // Emit for every item including the first: the parser measures a
+            // nested first item against the '{' offset, so a normal "{\n  key"
+            // records 0 and only a genuine blank line after the brace survives.
+            EmitBlankLines(sb, item.BlankLinesBefore, options);
             WriteObjectItem(sb, item, innerIndent, keyWidth, source, options);
         }
 
@@ -199,12 +199,9 @@ public sealed class HclWriterService : IHclWriter
         var innerIndent = indent + options.IndentSize;
         var pad = new string(' ', innerIndent);
 
-        var firstItem = true;
         foreach (var item in array.Items)
         {
-            if (!firstItem)
-                EmitBlankLines(sb, item.BlankLinesBefore, options);
-            firstItem = false;
+            EmitBlankLines(sb, item.BlankLinesBefore, options);
 
             // Fast path: unchanged element (incl. its leading comments) → original slice.
             if (source is not null && !IsDirtyArrayItem(item) && item.HasSourceSpan)

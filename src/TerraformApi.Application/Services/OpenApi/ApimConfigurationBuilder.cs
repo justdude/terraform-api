@@ -76,7 +76,12 @@ internal static class ApimConfigurationBuilder
                         ? $"{operationPrefix}-{namingValidator.SanitizeOperationId(opIdRaw)}-{env}"
                         : namingValidator.SanitizeOperationId($"{operationPrefix}-{opIdRaw}-{env}");
 
-                    var displayName = op.Summary ?? op.OperationId ?? $"{method} {pathItem.Key}";
+                    // Whitespace-aware: an OpenAPI operation may declare summary
+                    // as "" (legal), which APIM rejects for display_name. Fall
+                    // back the same way the operations listing does.
+                    var displayName = !string.IsNullOrWhiteSpace(op.Summary) ? op.Summary
+                        : !string.IsNullOrWhiteSpace(op.OperationId) ? op.OperationId
+                        : $"{method} {pathItem.Key}";
 
                     operations.Add(new ApimApiOperation
                     {

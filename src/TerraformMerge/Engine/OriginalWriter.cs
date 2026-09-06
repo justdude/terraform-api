@@ -61,11 +61,7 @@ public sealed class OriginalWriter
         // original text verbatim regardless, but once an edit re-renders a line
         // the default "\n" would mix with the sliced siblings' "\r\n" on a
         // CRLF-authored file, flipping the EOL of every re-rendered line.
-        var lineEnding = doc.Ast.OriginalSource?.Contains("\r\n", StringComparison.Ordinal) == true
-            ? "\r\n"
-            : "\n";
-
-        return _writer.Write(doc.Ast, new HclWriteOptions { LineEnding = lineEnding });
+        return _writer.Write(doc.Ast, HclLineEndings.OptionsFor(doc.Ast.OriginalSource));
     }
 
     /// <summary>
