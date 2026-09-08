@@ -171,22 +171,30 @@ public sealed class MainForm : Form
         if (moveButtons)
         {
             var moveBar = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false };
-            var add = new Button { Text = "◄ Add to Original", AutoSize = true };
+            var add = new Button
+            {
+                Text = "◄ Add to Original",
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Padding = new Padding(6, 0, 10, 0) // room so the caption is never clipped
+            };
             add.Click += (_, _) => AddSelectedToOriginal(title);
             moveBar.Controls.Add(add);
             layout.Controls.Add(moveBar, 0, 1);
         }
 
+        // The browse/Load columns auto-size to their captions so the text is
+        // never clipped (a fixed 60px "Load" column rendered as "Loa").
         var pathBar = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1 };
         pathBar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        pathBar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 34));
-        pathBar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 60));
+        pathBar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        pathBar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
         path = new TextBox { Dock = DockStyle.Fill };
         var localPath = path;
-        var browse = new Button { Text = "…", Dock = DockStyle.Fill };
+        var browse = new Button { Text = "…", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(6, 0, 6, 0) };
         browse.Click += (_, _) => BrowseInto(localPath);
-        var load = new Button { Text = "Load", Dock = DockStyle.Fill };
+        var load = new Button { Text = "Load", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(6, 0, 10, 0) };
         load.Click += onLoad;
 
         pathBar.Controls.Add(path, 0, 0);

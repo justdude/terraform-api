@@ -66,6 +66,20 @@ Legend: ✅ pass · ❌ fail (see Bugs) · ⬜ not yet run
   by F19/F20 and the unit suite; conversion by F24; the Save guard by unit review.
 - **`convert --openapi <url>` / `merge --target <url>`** would require live network.
 
+## Visual test (screenshots)
+
+`Screenshots/capture-app.ps1` launches the real `TerraformMerge.exe`, drives it
+with UI Automation, and captures the actual on-screen window:
+
+| Shot | State | Verified |
+|------|-------|----------|
+| `01-empty-window.png` | window at startup | ✅ renders |
+| `02-after-compute-diff.png` | Original/Diff/Target populated, `Diff: 1 to add, 0 changed` | ✅ correct |
+| `03-operation-editor.png` | per-field editor (operation_id fixed, every field an editable combo) | ✅ correct |
+
+Run: `powershell -File tests/TerraformMerge.IntegrationTests/Screenshots/capture-app.ps1`
+(images default to `%TEMP%\tfmerge-shots`). It found BUG-2 below.
+
 ## Bugs found
 
 ### BUG-1 — `convert` with an omitted `--api-group` emits unparseable HCL (FIXED)
@@ -88,4 +102,17 @@ Legend: ✅ pass · ❌ fail (see Bugs) · ⬜ not yet run
 - **Status:** fixed; 2 pre-existing assertions that expected the invalid bare
   placeholder key were corrected to the quoted form.
 
-_No other feature failed: F1–F28 and E1–E6 pass._
+### BUG-2 — button captions clipped ("Load" → "Loa") (FIXED)
+
+- **Surfaced by:** the screenshot pass (`02-after-compute-diff.png`).
+- **Symptom:** each pane's **Load** button rendered as "Loa" and the two
+  **◄ Add to Original** buttons were clipped to "…Origina" — the fixed 60px Load
+  column and the AutoSize button's measured width were a few pixels short of the
+  caption.
+- **Fix:** the browse/Load columns are now `AutoSize`, and the Load / browse /
+  Add buttons `AutoSize` with a little right padding, so captions always fit
+  (confirmed by re-capturing `02`).
+- **Status:** fixed; cosmetic (low severity), no data impact.
+
+_No other feature failed: F1–F28 and E1–E6 pass; the three screenshots render
+correctly._
