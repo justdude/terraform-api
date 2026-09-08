@@ -75,6 +75,15 @@ function Find-ByName($root, $ct, $name) {
   foreach ($e in Elements $root $ct) { if ($e.Current.Name -eq $name) { return $e } }; return $null
 }
 function Invoke-Element($e) { $e.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() }
+# An editable ComboBox (the panes' Env pickers) exposes an Edit child of its
+# own, so the file-path boxes are the Edits whose parent is not a ComboBox.
+function Path-Edits($root) {
+  $walker = [System.Windows.Automation.TreeWalker]::RawViewWalker
+  return @(Elements $root $CT::Edit | Where-Object {
+    $parent = $walker.GetParent($_)
+    ($parent -eq $null) -or ($parent.Current.ControlType -ne $CT::ComboBox)
+  })
+}
 function Set-EditValue($e, $v) { $e.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue($v) }
 
 $p = Start-Process $Exe -PassThru
@@ -85,7 +94,7 @@ try {
   Capture-Handle $p.MainWindowHandle (Join-Path $OutDir "01-empty-window.png")
   $win = $UIA::FromHandle($p.MainWindowHandle)
 
-  $edits = Elements $win $CT::Edit
+  $edits = Path-Edits $win
   $loads = @(Elements $win $CT::Button | Where-Object { $_.Current.Name -eq "Load" })
   Set-EditValue $edits[0] (Join-Path $Fixtures "original.tf"); Invoke-Element $loads[0]; Start-Sleep -Milliseconds 400
   Set-EditValue $edits[2] (Join-Path $Fixtures "target.tf");   Invoke-Element $loads[2]; Start-Sleep -Milliseconds 400

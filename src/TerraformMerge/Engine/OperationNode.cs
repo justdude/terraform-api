@@ -82,10 +82,14 @@ public sealed class OperationNode
     /// </summary>
     public string? Environment => EnvironmentCatalog.Detect(this);
 
-    /// <summary>Label shown in the list boxes.</summary>
+    /// <summary>
+    /// Label shown in the list boxes. The environment leads, because a long id
+    /// runs past the pane's width and the environment is the thing to spot at a
+    /// glance — a dev operation sitting in a qa list.
+    /// </summary>
     public string Display =>
-        $"{Method,-6} {UrlTemplate}   ({OperationId})".TrimEnd()
-        + (Environment is { } environment ? $"  [{environment}]" : "")
+        (Environment is { } environment ? $"[{environment}] " : "")
+        + $"{Method,-6} {UrlTemplate}   ({OperationId})".TrimEnd()
         + (Edited ? "  •edited" : "");
 
     /// <summary>Syntactically normalized URL (trimmed, collapsed slashes) for comparison.</summary>

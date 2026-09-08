@@ -53,7 +53,7 @@ public sealed class OperationEditorDialog : Form
         MaximizeBox = false;
         ShowInTaskbar = false;
         Font = new Font("Segoe UI", 9f);
-        ClientSize = new Size(560, 500);
+        ClientSize = new Size(560, 548);
         MinimumSize = new Size(460, 420);
 
         var root = new TableLayoutPanel
@@ -63,7 +63,7 @@ public sealed class OperationEditorDialog : Form
             RowCount = 3,
             Padding = new Padding(12)
         };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));  // header
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));  // header (two lines)
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));  // fields
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));  // buttons
         Controls.Add(root);
@@ -72,9 +72,8 @@ public sealed class OperationEditorDialog : Form
         {
             Dock = DockStyle.Fill,
             ForeColor = Color.DimGray,
-            Text = "Each value can be picked from either side or typed. " +
-                   "Picking an environment refills the fields below for that environment " +
-                   "— including operation_id, which is otherwise fixed."
+            Text = "Each value can be picked from either side or typed. Picking an " +
+                   "environment refills the fields below, operation_id included."
         }, 0, 0);
 
         root.Controls.Add(BuildFields(subject, catalog), 0, 1);
@@ -89,7 +88,7 @@ public sealed class OperationEditorDialog : Form
             ColumnCount = 2,
             AutoScroll = true
         };
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 152));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
         var row = 0;

@@ -121,7 +121,7 @@ public sealed class MainForm : Form
 
         panel.Controls.Add(new Label
         {
-            Text = "   •   Double-click a row to edit its fields   •   Env: move the selected rows to another environment",
+            Text = "   •   Double-click a row to edit it   •   Env: moves the selected rows",
             AutoSize = true,
             ForeColor = Color.DimGray,
             Padding = new Padding(0, 8, 0, 0)
@@ -148,8 +148,8 @@ public sealed class MainForm : Form
         };
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); // list
         if (moveButtons)
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34)); // move buttons
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));  // environment bar
+            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // move buttons
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));  // environment bar
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));  // path controls
         group.Controls.Add(layout);
 
@@ -186,7 +186,13 @@ public sealed class MainForm : Form
 
         if (moveButtons)
         {
-            var moveBar = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false };
+            var moveBar = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                WrapContents = false,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink
+            };
             var add = new Button
             {
                 Text = "◄ Add to Original",
@@ -234,7 +240,13 @@ public sealed class MainForm : Form
     /// </summary>
     private Control BuildEnvironmentBar(ListBox list, bool isOriginal, out ComboBox environment)
     {
-        var bar = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false };
+        var bar = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            WrapContents = false,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink
+        };
         bar.Controls.Add(new Label { Text = "Env:", AutoSize = true, Padding = new Padding(0, 6, 2, 0) });
 
         var combo = new ComboBox

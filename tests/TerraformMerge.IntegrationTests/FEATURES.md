@@ -10,7 +10,8 @@ Legend: ✅ pass · ❌ fail (see Bugs) · ⬜ not yet run
 
 - **CLI** features run the real `TerraformMerge.exe` as a process (`Cli/CliProcessTests.cs`).
 - **Workflow** features drive the engine through real file I/O exactly as the
-  window's buttons do (`Workflows/MergeWorkflowTests.cs`).
+  window's buttons do (`Workflows/MergeWorkflowTests.cs`,
+  `Workflows/EnvironmentWorkflowTests.cs`).
 - **UI** features drive a real `MainForm` on an STA thread through its own handlers
   (`Ui/MainFormDriverTests.cs`).
 
@@ -46,6 +47,13 @@ Legend: ✅ pass · ❌ fail (see Bugs) · ⬜ not yet run
 | F26 | Operation editor dialog builds | `OperationEditorDialog_BuildsWithoutError` | ✅ |
 | F27 | Mode toggle updates Target pane title | `ModeToggle_UpdatesTargetPaneTitle` | ✅ |
 | F28 | Load → Compute Diff → Save through the form handlers | `LoadComputeDiffSave_ThroughFormHandlers` | ✅ |
+| F29 | Loading a pane preselects the environment its document is in | `LoadingAPane_PreselectsTheEnvironmentTheDocumentIsIn` | ✅ |
+| F30 | Add to Original re-stamps the copy for the Original's environment | `AddToOriginal_ReStampsTheCopyForTheOriginalsEnvironment` | ✅ |
+| F31 | Set selected moves the selected rows to another environment | `SetSelected_MovesTheSelectedOriginalRowsToAnotherEnvironment` | ✅ |
+| F32 | Row menu rebuilds its environment list every time it opens | `RowMenu_RebuildsItsEnvironmentListEveryTimeItOpens` | ✅ (found BUG-3) |
+| F33 | Loaded documents report their environments and profiles | `LoadedDocumentsReportTheirEnvironments` | ✅ |
+| F34 | dev → qa: qa gains the operations it was missing, as qa operations | `MissingDevOperationsAreAddedToQaAsQaOperations` | ✅ |
+| F35 | Environment set in place rewrites only that operation's lines | `SettingAnOperationsEnvironmentInPlaceRewritesOnlyThatOperation` | ✅ |
 
 ## Edge cases / robustness (`Cli/CliEdgeCaseTests.cs`)
 
@@ -114,5 +122,24 @@ Run: `powershell -File tests/TerraformMerge.IntegrationTests/Screenshots/capture
   (confirmed by re-capturing `02`).
 - **Status:** fixed; cosmetic (low severity), no data impact.
 
-_No other feature failed: F1–F28 and E1–E6 pass; the three screenshots render
+### BUG-3 — the environment bar's controls were clipped, and its menu threw on reopen (FIXED)
+
+- **Surfaced by:** the screenshot pass again (`02-after-compute-diff.png`), and
+  by `RowMenu_RebuildsItsEnvironmentListEveryTimeItOpens` (F32).
+- **Symptom:** the pane's new **Env:** row was given a fixed 32px table row (and
+  the move bar 34px), which is less than an AutoSize button plus the panel's and
+  the button's own margins — the combo and **Set selected** were sliced off at
+  about 60% height, and the **◄ Add to Original** caption lost its bottom pixels.
+  Separately, reopening a row's context menu threw: the rebuild disposed the
+  previous round's environment items while enumerating them, and disposing a
+  `ToolStripItem` removes it from the collection being enumerated.
+- **Fix:** both bars' rows are `AutoSize` and both panels `AutoSize` with
+  `GrowAndShrink`, so a row is exactly as tall as its controls need; the menu
+  rebuild copies the items out (`.ToArray()`) before disposing them. The editor
+  dialog also grew a row taller than its header allowed — its header row and
+  label column were widened to fit "Resource group" and the two-line hint.
+- **Status:** fixed; confirmed by re-capturing `02`/`03` and by F32, which fails
+  against the pre-fix menu code.
+
+_No other feature failed: F1–F35 and E1–E6 pass; the three screenshots render
 correctly._
