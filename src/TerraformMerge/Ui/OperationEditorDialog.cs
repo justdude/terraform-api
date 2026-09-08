@@ -6,19 +6,46 @@ namespace TerraformMerge.Ui;
 /// Per-operation field editor. Every editable field is an editable combo box
 /// whose drop-down lists the distinct values that field takes across <b>both
 /// sides</b> of the merge (from <see cref="MergeFieldCatalog"/>), so a value can
-/// be accepted from either side or typed fresh. <c>operation_id</c> is shown but
-/// fixed — it is the operation's identity and is never merged.
+/// be accepted from either side or typed fresh.
+///
+/// The <b>Environment</b> picker at the top is the shortcut for the whole set:
+/// choosing one previews the operation as it would look in that environment
+/// (resource group, APIM instance, api name, operation id, display name,
+/// description), taking the destination environment's own values from the loaded
+/// files where it has them. <c>operation_id</c> is otherwise fixed — it is the
+/// operation's identity and is never merged from the other side.
 /// </summary>
 public sealed class OperationEditorDialog : Form
 {
     private readonly Dictionary<OperationField, ComboBox> _editors = new();
+    private readonly OperationNode _subject;
+    private readonly EnvironmentCatalog _environments;
+
+    private ComboBox _environment = null!;
+    private TextBox _operationId = null!;
+    private string _plannedOperationId;
+    private string _previewedEnvironment;
 
     /// <summary>Field → chosen value. Populated only when the dialog is accepted.</summary>
     public IReadOnlyDictionary<OperationField, string> Edits { get; private set; } =
         new Dictionary<OperationField, string>();
 
-    public OperationEditorDialog(OperationNode subject, MergeFieldCatalog catalog)
+    /// <summary>
+    /// The new operation id when an environment move renamed it, else null.
+    /// Populated only when the dialog is accepted.
+    /// </summary>
+    public string? OperationIdEdit { get; private set; }
+
+    public OperationEditorDialog(
+        OperationNode subject,
+        MergeFieldCatalog catalog,
+        EnvironmentCatalog? environments = null)
     {
+        _subject = subject;
+        _environments = environments ?? EnvironmentCatalog.Empty;
+        _plannedOperationId = subject.OperationId;
+        _previewedEnvironment = subject.Environment ?? "";
+
         Text = "Edit operation";
         FormBorderStyle = FormBorderStyle.Sizable;
         StartPosition = FormStartPosition.CenterParent;
@@ -26,8 +53,8 @@ public sealed class OperationEditorDialog : Form
         MaximizeBox = false;
         ShowInTaskbar = false;
         Font = new Font("Segoe UI", 9f);
-        ClientSize = new Size(560, 460);
-        MinimumSize = new Size(460, 380);
+        ClientSize = new Size(560, 500);
+        MinimumSize = new Size(460, 420);
 
         var root = new TableLayoutPanel
         {
@@ -36,7 +63,7 @@ public sealed class OperationEditorDialog : Form
             RowCount = 3,
             Padding = new Padding(12)
         };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));  // header
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));  // header
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));  // fields
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));  // buttons
         Controls.Add(root);
@@ -46,7 +73,8 @@ public sealed class OperationEditorDialog : Form
             Dock = DockStyle.Fill,
             ForeColor = Color.DimGray,
             Text = "Each value can be picked from either side or typed. " +
-                   "operation_id identifies the operation and cannot be changed."
+                   "Picking an environment refills the fields below for that environment " +
+                   "— including operation_id, which is otherwise fixed."
         }, 0, 0);
 
         root.Controls.Add(BuildFields(subject, catalog), 0, 1);
@@ -66,16 +94,35 @@ public sealed class OperationEditorDialog : Form
 
         var row = 0;
 
-        // operation_id — read-only identity.
+        // Environment — moves the operation as a whole; drives every other row.
+        grid.Controls.Add(FieldLabel("Environment"), 0, row);
+        _environment = new ComboBox
+        {
+            Dock = DockStyle.Fill,
+            DropDownStyle = ComboBoxStyle.DropDown, // editable — an environment no file uses yet can be typed
+            Margin = new Padding(3, 3, 3, 6),
+            AutoCompleteMode = AutoCompleteMode.SuggestAppend,
+            AutoCompleteSource = AutoCompleteSource.ListItems
+        };
+        foreach (var choice in _environments.Choices())
+            _environment.Items.Add(choice);
+        _environment.Text = subject.Environment ?? "";
+        _environment.SelectedIndexChanged += (_, _) => PreviewEnvironment();
+        _environment.Leave += (_, _) => PreviewEnvironment(); // a typed environment applies when focus moves on
+        grid.Controls.Add(_environment, 1, row);
+        row++;
+
+        // operation_id — identity, read-only; only an environment move rewrites it.
         grid.Controls.Add(FieldLabel("operation_id"), 0, row);
-        grid.Controls.Add(new TextBox
+        _operationId = new TextBox
         {
             Dock = DockStyle.Fill,
             ReadOnly = true,
             Text = subject.OperationId,
             BackColor = SystemColors.Control,
             Margin = new Padding(3, 3, 3, 6)
-        }, 1, row);
+        };
+        grid.Controls.Add(_operationId, 1, row);
         row++;
 
         foreach (var info in OperationFieldInfo.All)
@@ -104,6 +151,34 @@ public sealed class OperationEditorDialog : Form
         }
 
         return grid;
+    }
+
+    /// <summary>
+    /// Shows the operation as the chosen environment would have it. Every field
+    /// is refilled from the operation's own value first, so switching the picker
+    /// twice previews the second environment instead of compounding onto the
+    /// first preview.
+    /// </summary>
+    private void PreviewEnvironment()
+    {
+        // Only when the environment actually changed: refilling the fields on
+        // every focus change would discard values typed into them by hand.
+        var chosen = _environment.Text ?? "";
+        if (string.Equals(chosen, _previewedEnvironment, StringComparison.Ordinal))
+            return;
+        _previewedEnvironment = chosen;
+
+        var plan = EnvironmentRetargeter.Plan(_subject, chosen, _environments);
+
+        foreach (var info in OperationFieldInfo.All)
+        {
+            _editors[info.Field].Text = plan.Fields.TryGetValue(info.Field, out var value)
+                ? value
+                : info.Get(_subject);
+        }
+
+        _plannedOperationId = plan.OperationId;
+        _operationId.Text = plan.OperationId;
     }
 
     private static IEnumerable<string> Choices(IReadOnlyList<string> catalogValues, string current)
@@ -151,6 +226,10 @@ public sealed class OperationEditorDialog : Form
         foreach (var (field, combo) in _editors)
             edits[field] = combo.Text ?? "";
         Edits = edits;
+
+        OperationIdEdit = string.Equals(_plannedOperationId, _subject.OperationId, StringComparison.Ordinal)
+            ? null
+            : _plannedOperationId;
     }
 
     /// <summary>

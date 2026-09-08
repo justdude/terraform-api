@@ -53,13 +53,54 @@ operation from staging to dev, double-click it and pick `rg-apim-dev` (offered
 because it exists on the other side) for the resource group — or type a new value.
 
 - `operation_id` is shown but **fixed** — it is the operation's identity and is
-  never merged across sides.
+  never merged across sides. The one thing that rewrites it is an environment
+  move (below), which re-stamps its own environment segment.
 - Editing an **Original** operation rewrites only the changed line in the file:
   its request/response blocks, policy heredoc, and comments are preserved
   byte-for-byte. `Save Original` persists the change.
 - Editing an operation you then **◄ Add to Original** carries your chosen
   api/resource-group/apim values into the generated block instead of the file's
   defaults.
+
+### Environments (dev → qa)
+
+Every pane has an **Env:** picker under its list. It answers "which environment
+should these operations be in?" and re-stamps the rows you select:
+
+- `apim_resource_group_name`, `apim_name`, `api_name` — taken from the
+  destination environment's **own values** where the loaded files have them
+  (the qa file's actual names), otherwise the operation's own value with its
+  environment segment rewritten (`rg-apim-dev` → `rg-apim-qa`);
+- `operation_id` — its environment segment is rewritten
+  (`list-orders-dev` → `list-orders-qa`). This is the one thing that rewrites
+  the id: it is not taken from another operation, and an APIM id must be unique
+  per instance, so a dev id inside the qa config is a bug;
+- `display_name` and `description` — same segment rewrite.
+
+Method, URL template and status code are never touched — they are the
+operation's route, not its environment. Interpolated values
+(`${var.resource_group}`) are left alone: they are already environment-neutral.
+
+A name only counts as an environment when it is a whole segment of a value, so
+`api-devices` is not "dev" and `latest` is not "test". You can type an
+environment no loaded file uses yet (an empty qa config); then every value is
+derived by rewriting the operation's own.
+
+**The dev → qa flow.** Load the qa config as **Original** and the dev config as
+**Target**. Both panes preselect the environment their document is in, so the
+Original pane reads `qa`. **Compute Diff** lists what qa is missing, select
+those rows and press **◄ Add to Original**: each one is copied — the Target pane
+keeps showing its own dev values — and the copy is re-stamped as `qa`.
+**Save Original** writes them into the qa file. Rows are labelled with their
+environment (`GET  orders  (list-orders-qa)  [qa]`), so a stray dev operation in
+a qa list is visible at a glance.
+
+To move operations already in a list, select them and press **Set selected**, or
+right-click → **Set environment** ▸. On the Original pane that edits the loaded
+file through the AST, so **Save Original** rewrites only those operations' lines
+and leaves the rest of the file byte-for-byte. The row editor
+(double-click) has the same picker at the top: choosing an environment there
+previews the whole operation, `operation_id` included, before you accept it.
 
 ## The parser and matcher (graphs + similarity distance)
 

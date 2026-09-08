@@ -20,15 +20,17 @@ public enum OperationSource
 ///
 /// The scalar fields are mutable so the merge editor can accept a value from
 /// either side (see <see cref="OperationEditor"/>). <see cref="OperationId"/> is
-/// deliberately read-only — it is the operation's identity, so it is never
-/// merged across sides.
+/// the operation's identity: it is never merged across sides, and the only thing
+/// that rewrites it is an environment move (see <see cref="EnvironmentRetargeter"/>),
+/// which rewrites the id's own environment token rather than taking another
+/// operation's id.
 /// </summary>
 public sealed class OperationNode
 {
     public required OperationSource Source { get; init; }
 
-    /// <summary>Operation id as written (may contain ${...} interpolations or {tag} placeholders). Read-only identity.</summary>
-    public string OperationId { get; init; } = "";
+    /// <summary>Operation id as written (may contain ${...} interpolations or {tag} placeholders). Identity — see the type remarks.</summary>
+    public string OperationId { get; set; } = "";
 
     /// <summary>HTTP method, upper-cased.</summary>
     public string Method { get; set; } = "";
@@ -74,15 +76,57 @@ public sealed class OperationNode
     /// <summary>True once any field has been changed through the editor. UI marker only.</summary>
     public bool Edited => EditedFields.Count > 0;
 
+    /// <summary>
+    /// The environment this operation belongs to (dev, qa, …), read from its
+    /// identifying field values; null when none of them names one.
+    /// </summary>
+    public string? Environment => EnvironmentCatalog.Detect(this);
+
     /// <summary>Label shown in the list boxes.</summary>
     public string Display =>
-        ($"{Method,-6} {UrlTemplate}   ({OperationId})".TrimEnd()) + (Edited ? "  •edited" : "");
+        $"{Method,-6} {UrlTemplate}   ({OperationId})".TrimEnd()
+        + (Environment is { } environment ? $"  [{environment}]" : "")
+        + (Edited ? "  •edited" : "");
 
     /// <summary>Syntactically normalized URL (trimmed, collapsed slashes) for comparison.</summary>
     public string NormalizedUrl => UrlNormalizer.Normalize(UrlTemplate);
 
     /// <summary>URL with parameter names collapsed to {} — coarse structural key.</summary>
     public string CanonicalUrl => UrlNormalizer.Canonical(UrlTemplate);
+
+    /// <summary>
+    /// An independent copy, taken when an operation is added from Diff/Target
+    /// into Original: the copy is what gets re-stamped for the destination
+    /// environment, so the pane it came from keeps showing its own file's values.
+    /// The AST item is carried along but only ever re-emitted for an
+    /// Original-sourced node, so a copy of a foreign operation is still generated.
+    /// </summary>
+    public OperationNode Copy()
+    {
+        var copy = new OperationNode
+        {
+            Source = Source,
+            OperationId = OperationId,
+            Method = Method,
+            UrlTemplate = UrlTemplate,
+            DisplayName = DisplayName,
+            Description = Description,
+            StatusCode = StatusCode,
+            ApiName = ApiName,
+            ApimResourceGroupName = ApimResourceGroupName,
+            ApimName = ApimName,
+            ParameterKeys = ParameterKeys,
+            ResponseCodes = ResponseCodes,
+            ArrayItem = ArrayItem,
+            OpenApiOperation = OpenApiOperation,
+            ApiGroupName = ApiGroupName
+        };
+
+        foreach (var field in EditedFields)
+            copy.EditedFields.Add(field);
+
+        return copy;
+    }
 
     public override string ToString() => Display;
 }

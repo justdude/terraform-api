@@ -65,6 +65,28 @@ public static class OperationEditor
     }
 
     /// <summary>
+    /// Rewrites the operation id. Not part of <see cref="OperationField"/> — the
+    /// field editor cannot change it, and no merge takes it from the other side.
+    /// The one caller is <see cref="EnvironmentRetargeter"/>, moving an operation
+    /// to another environment: <c>list-orders-dev</c> becomes <c>list-orders-qa</c>.
+    /// For an Original-sourced node the change goes through the AST like any
+    /// other edit, so only that one line is re-rendered on save.
+    /// </summary>
+    public static bool ApplyOperationId(OperationNode node, string operationId)
+    {
+        var value = operationId ?? "";
+        if (string.Equals(node.OperationId, value, StringComparison.Ordinal))
+            return false;
+
+        node.OperationId = value;
+
+        if (node.Source == OperationSource.OriginalTerraform && node.ArrayItem?.Value is HclObject op)
+            ApplyToAst(op, "operation_id", value);
+
+        return true;
+    }
+
+    /// <summary>
     /// Replaces (or inserts) one scalar assignment in the operation's AST object.
     /// The replacement carries no source span, so the writer treats it as dirty
     /// and re-renders just that line while slicing every unchanged sibling.
