@@ -54,6 +54,8 @@ Legend: ✅ pass · ❌ fail (see Bugs) · ⬜ not yet run
 | F33 | Loaded documents report their environments and profiles | `LoadedDocumentsReportTheirEnvironments` | ✅ |
 | F34 | dev → qa: qa gains the operations it was missing, as qa operations | `MissingDevOperationsAreAddedToQaAsQaOperations` | ✅ |
 | F35 | Environment set in place rewrites only that operation's lines | `SettingAnOperationsEnvironmentInPlaceRewritesOnlyThatOperation` | ✅ |
+| F36 | CLI `merge --env <e>`: every appended operation is re-stamped for `<e>` | `Merge_EnvFlag_AppendsTheDevOperationsAsQa` | ✅ |
+| F37 | CLI `merge --env` with no value → exit 1, nothing written | `Merge_EnvFlag_WithoutAValue_Exit1_AndWritesNothing` | ✅ |
 
 ## Edge cases / robustness (`Cli/CliEdgeCaseTests.cs`)
 
@@ -141,5 +143,5 @@ Run: `powershell -File tests/TerraformMerge.IntegrationTests/Screenshots/capture
 - **Status:** fixed; confirmed by re-capturing `02`/`03` and by F32, which fails
   against the pre-fix menu code.
 
-_No other feature failed: F1–F35 and E1–E6 pass; the three screenshots render
+_No other feature failed: F1–F37 and E1–E6 pass; the three screenshots render
 correctly._

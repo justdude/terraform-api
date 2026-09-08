@@ -123,6 +123,32 @@ public class EnvironmentRetargetTests
     }
 
     [Fact]
+    public void Retarget_UsesTheDestinationEnvironmentsOwnSpelling()
+    {
+        // "QA" asked for, "qa" is what the loaded files call it: the operation
+        // must not end up with a QA id next to a qa api name.
+        var catalog = EnvironmentCatalog.Build([Op("qa")], []);
+        var moved = Op("dev", "get-order");
+
+        Assert.True(EnvironmentRetargeter.Retarget(moved, "QA", catalog));
+
+        Assert.Equal("get-order-qa", moved.OperationId);
+        Assert.Equal("rg-apim-qa", moved.ApimResourceGroupName);
+        Assert.Equal("orders-api-qa", moved.ApiName);
+    }
+
+    [Fact]
+    public void Retarget_KeepsTheAskedForSpellingWhenNoFileNamesThatEnvironment()
+    {
+        var moved = Op("dev");
+
+        Assert.True(EnvironmentRetargeter.Retarget(moved, "QA"));
+
+        Assert.Equal("rg-apim-QA", moved.ApimResourceGroupName);
+        Assert.Equal("list-orders-QA", moved.OperationId);
+    }
+
+    [Fact]
     public void Retarget_NeverTouchesTheRoute()
     {
         var moved = Op("dev");

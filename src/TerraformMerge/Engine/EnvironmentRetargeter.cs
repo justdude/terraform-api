@@ -70,6 +70,14 @@ public static class EnvironmentRetargeter
             return new EnvironmentRetargetPlan(from, to, NoFields, node.OperationId, false);
 
         var profile = catalog?.Profile(to);
+
+        // The destination environment's own spelling wins over the one that was
+        // asked for: stamping "QA" into files that say "qa" everywhere would
+        // leave the rewritten operation_id disagreeing with the api name beside
+        // it, which comes from the file verbatim.
+        if (profile is not null)
+            to = profile.Name;
+
         var fields = new Dictionary<OperationField, string>();
 
         foreach (var field in EnvironmentCatalog.ProfileFields)

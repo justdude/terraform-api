@@ -155,8 +155,35 @@ TerraformMerge convert --openapi swagger.json --out apim.tf --env dev --api-grou
 # Append operations from a Target (Terraform or OpenAPI) into an Original Terraform config.
 TerraformMerge merge --original apim.tf --target new-swagger.json --out apim.tf --threshold 0.55
 
+# Give the qa config the operations it is missing from dev, as qa operations.
+TerraformMerge merge --original qa.tf --target dev.tf --env qa
+
 TerraformMerge help
 ```
+
+`merge --env <e>` is the headless form of the window's "add to Original as qa":
+every operation it appends is re-stamped for `<e>` — `apim_resource_group_name`,
+`apim_name`, `api_name`, `operation_id`, `display_name`, `description` — by the
+same rules as the environment picker above. The original file's own operations
+are untouched and re-emitted byte-for-byte.
+
+Without `--env` an appended operation keeps the target's `operation_id`,
+`display_name` and `description`, while its `apim_resource_group_name`,
+`apim_name` and `api_name` come from the *original* file's api group — a
+generated block always blends into the file it is written to. So `--env` is what
+moves the id and the environment-suffixed text; the three APIM identifiers it
+also pins matter when the original file names more than one environment, or none.
+
+One case to merge **without** `--env`: a destination file that parameterizes those
+identifiers (`apim_name = "${var.apim_name}"`). Its own operations are already
+environment-neutral, and the generated blocks inherit those interpolations —
+whereas `--env qa` writes literal qa values into a file whose house style is
+variables.
+
+The flag takes an environment *name*: a bare `--env` (or a value with spaces or
+slashes) is rejected with exit 1 and nothing is written — the option parser reads
+a valueless flag as the value `true`, and stamping every appended operation with
+an environment called "true" is worse than an error.
 
 Run with **no arguments** to open the graphical window.
 

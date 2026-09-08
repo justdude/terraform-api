@@ -152,6 +152,42 @@ public class CliProcessTests
         Assert.DoesNotContain('\n', tf.Replace("\r\n", "")); // no bare LF
     }
 
+    [Fact] // F36
+    public void Merge_EnvFlag_AppendsTheDevOperationsAsQa()
+    {
+        using var ws = new TempWorkspace();
+        var original = ws.CopyFixture("qa.tf");        // one operation, qa
+        var target = ws.CopyFixture("original.tf");    // two operations, dev
+        var outPath = ws.Path("merged.tf");
+
+        var r = TestEnvironment.RunCli("merge", "--original", original, "--target", target,
+            "--out", outPath, "--env", "qa");
+
+        Assert.Equal(0, r.ExitCode);
+        var tf = File.ReadAllText(outPath);
+        Assert.Contains("get-order-qa", tf);       // the missing operation, re-stamped
+        Assert.DoesNotContain("-dev", tf);         // nothing dev-shaped reached the qa file
+        Assert.Equal(2, OperationCount(tf));
+    }
+
+    [Fact] // F37
+    public void Merge_EnvFlag_WithoutAValue_Exit1_AndWritesNothing()
+    {
+        using var ws = new TempWorkspace();
+        var original = ws.CopyFixture("qa.tf");
+        var target = ws.CopyFixture("original.tf");
+        var outPath = ws.Path("merged.tf");
+        var before = File.ReadAllText(original);
+
+        // "--env" with nothing after it parses as the value "true".
+        var r = TestEnvironment.RunCli("merge", "--original", original, "--target", target,
+            "--out", outPath, "--env");
+
+        Assert.Equal(1, r.ExitCode);
+        Assert.False(File.Exists(outPath), "no output on a rejected value");
+        Assert.Equal(before, File.ReadAllText(original));
+    }
+
     // ---- diagnostics (F9–F11) ----
 
     [Theory] // F9
