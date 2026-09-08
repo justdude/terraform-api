@@ -88,7 +88,7 @@ public class ProductsEndpointTests : IClassFixture<WebApplicationFactory<Program
         Assert.True(json.GetProperty("success").GetBoolean());
         var hcl = json.GetProperty("terraformConfig").GetString()!;
         Assert.Contains("GENERATED WITH PLACEHOLDER TAGS", hcl);
-        Assert.Contains("{api-group} = {", hcl);
+        Assert.Contains("\"{api-group}\" = {", hcl); // quoted: a bare {api-group} key is invalid HCL
         Assert.Contains("\"{stage-group-name}\"", hcl);
     }
 }

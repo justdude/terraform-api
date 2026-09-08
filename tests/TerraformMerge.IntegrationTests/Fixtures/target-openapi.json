@@ -1,0 +1,23 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "Orders API", "version": "1.0.0" },
+  "paths": {
+    "/orders": {
+      "get": {
+        "summary": "List orders",
+        "operationId": "listOrders",
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/orders/{orderId}": {
+      "delete": {
+        "summary": "Delete order",
+        "operationId": "deleteOrder",
+        "parameters": [
+          { "name": "orderId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "204": { "description": "No Content" } }
+      }
+    }
+  }
+}

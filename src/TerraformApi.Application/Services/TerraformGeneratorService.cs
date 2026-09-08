@@ -21,7 +21,11 @@ public sealed class TerraformGeneratorService : ITerraformGenerator
         var sb = new StringBuilder();
         var indent = "        ";
 
-        sb.AppendLine($"{configuration.ApiGroupName} = {{");
+        // Quote the group key when it is not a legal bare HCL identifier — most
+        // importantly a placeholder such as {api-group}, whose leading '{' would
+        // otherwise produce unparseable HCL. Valid names (orders-api-group) are
+        // left bare, matching the established output.
+        sb.AppendLine($"{FormatGroupKey(configuration.ApiGroupName)} = {{");
 
         // Product block — empty one-liner when no products configured, full blocks otherwise
         if (configuration.Products.Count == 0)
@@ -219,6 +223,22 @@ public sealed class TerraformGeneratorService : ITerraformGenerator
         sb.AppendLine($"{indent}published                = {FormatBool(product.Published)}");
         sb.AppendLine($"{indent}subscriptions_limit      = {(product.SubscriptionsLimit.HasValue ? product.SubscriptionsLimit.Value.ToString() : "null")}");
         sb.AppendLine($"{indent}description              = \"{EscapeString(product.Description)}\"");
+    }
+
+    /// <summary>
+    /// Returns the group key as written: bare when it is a legal HCL identifier
+    /// (letter/underscore start, then letters/digits/<c>_</c>/<c>-</c>), quoted
+    /// otherwise — e.g. a <c>{api-group}</c> placeholder, whose braces are illegal
+    /// in a bare key and would make the whole document unparseable.
+    /// </summary>
+    private static string FormatGroupKey(string key)
+    {
+        if (string.IsNullOrEmpty(key))
+            return "\"\"";
+
+        var bare = (char.IsLetter(key[0]) || key[0] == '_')
+                   && key.All(c => char.IsLetterOrDigit(c) || c == '_' || c == '-');
+        return bare ? key : $"\"{key}\"";
     }
 
     private static string FormatBool(bool value) => value ? "true" : "false";

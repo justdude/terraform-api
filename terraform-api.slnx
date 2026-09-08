@@ -11,5 +11,6 @@
     <Project Path="tests/TerraformApi.Application.Tests/TerraformApi.Application.Tests.csproj" />
     <Project Path="tests/TerraformApi.Mcp.Tests/TerraformApi.Mcp.Tests.csproj" />
     <Project Path="tests/TerraformMerge.Tests/TerraformMerge.Tests.csproj" />
+    <Project Path="tests/TerraformMerge.IntegrationTests/TerraformMerge.IntegrationTests.csproj" />
   </Folder>
 </Solution>

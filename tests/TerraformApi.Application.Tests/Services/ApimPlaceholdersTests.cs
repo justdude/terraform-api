@@ -94,8 +94,9 @@ public class ApimPlaceholdersTests
         Assert.Contains("{api-group}", result.TerraformConfig);
         Assert.Contains("{environment}", result.TerraformConfig);
 
-        // The tags are used in the actual configuration values.
-        Assert.Contains("{api-group} = {", result.TerraformConfig);
+        // The tags are used in the actual configuration values. The group key is
+        // quoted because a bare {api-group} would be unparseable HCL.
+        Assert.Contains("\"{api-group}\" = {", result.TerraformConfig);
         Assert.Contains("\"{stage-group-name}\"", result.TerraformConfig);
         Assert.Contains("\"{apim-name}\"", result.TerraformConfig);
     }

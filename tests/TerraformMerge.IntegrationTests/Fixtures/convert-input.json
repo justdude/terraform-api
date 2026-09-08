@@ -1,0 +1,41 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "Catalog API", "version": "2.1.0" },
+  "paths": {
+    "/products": {
+      "get": {
+        "summary": "List products",
+        "operationId": "listProducts",
+        "parameters": [
+          { "name": "category", "in": "query", "required": false, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "OK" } }
+      },
+      "post": {
+        "summary": "Create product",
+        "operationId": "createProduct",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/Product" }
+            }
+          }
+        },
+        "responses": { "201": { "description": "Created" } }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Product": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "price": { "type": "number" }
+        }
+      }
+    }
+  }
+}
